@@ -36,7 +36,19 @@ func (help *HelpText) GetHelpText() string {
 	helpText := `PXC Calculator for Percona Operator
 
 
+To get supported scenarios:
+  curl -i -X GET  http://192.168.4.41:8080/supported
+	  HTTP/1.1 200 OK
+	  Date: Sat, 24 Dec 2022 17:00:33 GMT
+	  Content-Length: 183
+	  Content-Type: text/plain; charset=utf-8
+	
+	  {"dimension":{"Large":4,"Medium":3,"Small":2,"XLarge":5,"XSmall":1},"loadtype":{"Intense OLTP (50/50 R/W)":3,"Light OLTP":2,"Mainly Reads":1},"connections":[50,100,200,500,1000,2000]}
+
+
+
 to test curl -i -X GET -H "Content-Type: application/json" -d '{"content":"test1"}' http://127.0.0.1:8080/calculator
+
 
 
 `

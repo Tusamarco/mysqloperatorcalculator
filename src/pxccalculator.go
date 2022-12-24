@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"pxccalculator/src/Global"
+	"pxccalculator/src/Objects"
 )
 
 func main() {
@@ -26,15 +28,16 @@ func main() {
 	}
 
 	server := http.Server{Addr: "0.0.0.0:8080"}
-	http.HandleFunc("/calculator", handleRequest)
+	http.HandleFunc("/calculator", handleRequestCalculator)
+	http.HandleFunc("/supported", handleRequestSupported)
 	server.ListenAndServe()
 }
 
-func handleRequest(writer http.ResponseWriter, request *http.Request) {
+func handleRequestCalculator(writer http.ResponseWriter, request *http.Request) {
 	var err error
 	switch request.Method {
 	case "GET":
-		err = handleGet(writer, request)
+		err = handleGetCalculate(writer, request)
 
 	}
 	if err != nil {
@@ -43,7 +46,19 @@ func handleRequest(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
-func handleGet(writer http.ResponseWriter, request *http.Request) error {
+func handleRequestSupported(writer http.ResponseWriter, request *http.Request) {
+	var err error
+	switch request.Method {
+	case "GET":
+		err = handleGetSupported(writer, request)
+	}
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		log.Error(err)
+	}
+}
+
+func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error {
 	len := request.ContentLength
 
 	if len <= 0 {
@@ -54,6 +69,21 @@ func handleGet(writer http.ResponseWriter, request *http.Request) error {
 
 	fmt.Fprintf(os.Stdout, "\n%s\n", body)
 
+	return nil
+}
+
+func handleGetSupported(writer http.ResponseWriter, request *http.Request) error {
+	var conf Objects.Configuration
+	conf.Init()
+	//output, err := json.Marshal(&conf)
+	output, err := json.MarshalIndent(&conf, "", "\t")
+
+	if err != nil {
+		return err
+	}
+
+	writer.Header().Set("Content/Type", "application/json")
+	writer.Write(output)
 	return nil
 }
 
