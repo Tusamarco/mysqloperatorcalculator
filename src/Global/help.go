@@ -35,11 +35,10 @@ func (help *HelpText) PrintLicense() {
 func (help *HelpText) GetHelpText() string {
 	helpText := `PXC Calculator for Percona Operator
 
-Parameters for the executable --configfile <file name> --configpath <full path> --help
+
+to test curl -i -X GET -H "Content-Type: application/json" -d '{"content":"test1"}' http://127.0.0.1:8080/calculator
 
 
-Parameters in the config file:
-Global:
 `
 	return helpText
 }
