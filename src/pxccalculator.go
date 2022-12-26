@@ -67,6 +67,20 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	body := make([]byte, len)
 	request.Body.Read(body)
 
+	var family Objects.Family
+	families := family.Init()
+
+	//output, err := json.Marshal(&conf)
+	output, err := json.MarshalIndent(&families, "", "\t")
+	
+	if err != nil {
+		return err
+	}
+
+	writer.Header().Set("Content/Type", "application/json")
+	writer.Write(output)
+	return nil
+
 	fmt.Fprintf(os.Stdout, "\n%s\n", body)
 
 	return nil
