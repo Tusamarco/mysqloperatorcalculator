@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,30 +68,40 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	body := make([]byte, len)
 	request.Body.Read(body)
 
+	var ConfRequest Objects.ConfigurationRequest
+	json.Unmarshal(body, &ConfRequest)
+
 	var family Objects.Family
 	families := family.Init()
 
 	//output, err := json.Marshal(&conf)
-	output, err := json.MarshalIndent(&families, "", "\t")
-	
+	processedRequest, err := json.MarshalIndent(&ConfRequest, "", "  ")
+	output, err := json.MarshalIndent(&families, "", "  ")
+
+	var B bytes.Buffer
+	B.WriteString(`{"request":{"incoming":`)
+	B.Write(processedRequest)
+	B.WriteString(`,"answer":`)
+	B.Write(output)
+	B.WriteString("}}")
+
 	if err != nil {
 		return err
 	}
 
 	writer.Header().Set("Content/Type", "application/json")
-	writer.Write(output)
+	writer.Write(B.Bytes())
 	return nil
 
-	fmt.Fprintf(os.Stdout, "\n%s\n", body)
+	//fmt.Fprintf(os.Stdout, "\n%s\n", body)
 
-	return nil
 }
 
 func handleGetSupported(writer http.ResponseWriter, request *http.Request) error {
 	var conf Objects.Configuration
 	conf.Init()
 	//output, err := json.Marshal(&conf)
-	output, err := json.MarshalIndent(&conf, "", "\t")
+	output, err := json.MarshalIndent(&conf, "", "  ")
 
 	if err != nil {
 		return err

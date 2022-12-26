@@ -6,6 +6,12 @@ type Configuration struct {
 	Connections []int       `json:"connections"`
 }
 
+type ConfigurationRequest struct {
+	Dimension   Dimension `json:"dimension"`
+	LoadType    LoadType  `json:"loadtype"`
+	Connections int       `json:"connections"`
+}
+
 type Dimension struct {
 	Id     int    `json:"id"`
 	Name   string `json:"name"`
@@ -99,6 +105,14 @@ func (family *Family) Init() map[string]Family {
 		"innodb_io_capacity_max":         {"innodb_io_capacity_max", "configuration", "innodb", "1000", "1400", 100, 0},
 	}
 
+	wsrepGroup := map[string]Parameter{
+		"wsrep_sync_wait":         {"wsrep_sync_wait", "configuration", "galera", "0", "0", 0, 8},
+		"wsrep_slave_threads":     {"wsrep_slave_threads", "configuration", "galera", "2", "1", 1, 0},
+		"wsrep_trx_fragment_size": {"wsrep_trx_fragment_size", "configuration", "galera", "1048576", "0", 0, 0},
+		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "1048576", "0", 0, 0},
+		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0},
+	}
+
 	pxcGroups := map[string]GroupObj{
 		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "15", "15", 15, 600}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 600}}},
@@ -125,6 +139,7 @@ func (family *Family) Init() map[string]Family {
 	pxcGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
 	pxcGroups["configuration_server"] = GroupObj{"server", serverGroup}
 	pxcGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
+	pxcGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
 
 	families := map[string]Family{"pxc": {"pxc", pxcGroups}, "haproxy": {"haproxy", haproxyGroups}}
 
