@@ -47,7 +47,9 @@ To get supported scenarios:
 
 
 
-to test curl -i -X GET -H "Content-Type: application/json" -d '{"content":"test1"}' http://127.0.0.1:8080/calculator
+to test:
+curl -i -X GET -H "Content-Type: application/json" -d '{ "dimension":  {"id": 1, "name": "XSmall",  "cpu": 1000}, "loadtype":  {"id": 1, "name": "Mainl
+y Reads"}, "connections": 50}' http://127.0.0.1:8080/calculator
 
 
 
