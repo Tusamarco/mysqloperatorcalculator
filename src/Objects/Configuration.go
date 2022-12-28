@@ -10,6 +10,7 @@ type ConfigurationRequest struct {
 	Dimension   Dimension `json:"dimension"`
 	LoadType    LoadType  `json:"loadtype"`
 	Connections int       `json:"connections"`
+	Human       bool      `json:"human"`
 }
 
 type Dimension struct {

@@ -76,21 +76,26 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	//output, err := json.Marshal(&conf)
 	processedRequest, err := json.MarshalIndent(&ConfRequest, "", "  ")
+
+	var c Configurator
+	c.init(ConfRequest, families)
+	c.ProcessRequest()
+
 	output, err := json.MarshalIndent(&families, "", "  ")
 
-	var B bytes.Buffer
-	B.WriteString(`{"request":{"incoming":`)
-	B.Write(processedRequest)
-	B.WriteString(`,"answer":`)
-	B.Write(output)
-	B.WriteString("}}")
+	var b bytes.Buffer
+	b.WriteString(`{"request":{"incoming":`)
+	b.Write(processedRequest)
+	b.WriteString(`,"answer":`)
+	b.Write(output)
+	b.WriteString("}}")
 
 	if err != nil {
 		return err
 	}
 
 	writer.Header().Set("Content/Type", "application/json")
-	writer.Write(B.Bytes())
+	writer.Write(b.Bytes())
 	return nil
 
 	//fmt.Fprintf(os.Stdout, "\n%s\n", body)
