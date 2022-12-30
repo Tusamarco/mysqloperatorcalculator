@@ -18,6 +18,7 @@ func main() {
 	//initialize help
 	help := new(Global.HelpText)
 
+	//just check if we need to pass version or help
 	if len(os.Args) > 1 &&
 		os.Args[1] == "--version" {
 		fmt.Println("PXC calculator for Operator Version: ", version)
@@ -28,12 +29,19 @@ func main() {
 		exitWithCode(0)
 	}
 
+	//set log level
+	log.SetLevel(log.DebugLevel)
+
+	//set server address (need to come from configuration parameter)
 	server := http.Server{Addr: "0.0.0.0:8080"}
+
+	//define API handlers
 	http.HandleFunc("/calculator", handleRequestCalculator)
 	http.HandleFunc("/supported", handleRequestSupported)
 	server.ListenAndServe()
 }
 
+// When need to calculate we (for the moment) just catch the request and pass over
 func handleRequestCalculator(writer http.ResponseWriter, request *http.Request) {
 	var err error
 	switch request.Method {
@@ -59,6 +67,9 @@ func handleRequestSupported(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
+// here we return a configuration answering to a request like:
+// { "dimension":  {"id": 3, "name": "XSmall",  "cpu": 1000}, "loadtype":  {"id": 2, "name": "Mainly Reads"}, "connections": 50}
+
 func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error {
 	len := request.ContentLength
 
@@ -68,21 +79,32 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	body := make([]byte, len)
 	request.Body.Read(body)
 
+	// we need to process the request and get the values
 	var ConfRequest Objects.ConfigurationRequest
 	json.Unmarshal(body, &ConfRequest)
 
+	// create and init all the different params organized by families
 	var family Objects.Family
 	families := family.Init()
 
+	var conf Objects.Configuration
+	conf.Init()
+
 	//output, err := json.Marshal(&conf)
+	// we store incoming request for reference when passing back the configuration
 	processedRequest, err := json.MarshalIndent(&ConfRequest, "", "  ")
 
+	// initialize the configurator (where all the things happens)
 	var c Configurator
-	c.init(ConfRequest, families)
+	c.init(ConfRequest, families, conf)
+
+	// here is the calculation step
 	c.ProcessRequest()
 
+	// We transform to Json all the calculated params
 	output, err := json.MarshalIndent(&families, "", "  ")
 
+	// Concatenate all into a single output
 	var b bytes.Buffer
 	b.WriteString(`{"request":{"incoming":`)
 	b.Write(processedRequest)
@@ -94,6 +116,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 		return err
 	}
 
+	// Return the information
 	writer.Header().Set("Content/Type", "application/json")
 	writer.Write(b.Bytes())
 	return nil

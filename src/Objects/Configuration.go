@@ -1,11 +1,17 @@
 package Objects
 
+//*********************************
+// Structure definitions
+//********************************
+
+// used to pass available configurations
 type Configuration struct {
 	Dimension   []Dimension `json:"dimension"`
 	LoadType    []LoadType  `json:"loadtype"`
 	Connections []int       `json:"connections"`
 }
 
+// used to store the incoming request
 type ConfigurationRequest struct {
 	Dimension   Dimension `json:"dimension"`
 	LoadType    LoadType  `json:"loadtype"`
@@ -13,19 +19,22 @@ type ConfigurationRequest struct {
 	Human       bool      `json:"human"`
 }
 
+// used to represent the POD dimension
 type Dimension struct {
 	Id     int    `json:"id"`
 	Name   string `json:"name"`
 	Cpu    int    `json:"cpu"`
-	memory int    `json:"memory"`
+	Memory int64  `json:"memory"`
 }
 
+// The different kind of load type
 type LoadType struct {
 	Id      int    `json:"id"`
 	Name    string `json:"name"`
 	Example string `json:"example"`
 }
 
+// generic structure to store Parameters values
 type Parameter struct {
 	Name    string `yaml:"name" json:"name"`
 	Section string `yaml:"section" json:"section"`
@@ -36,23 +45,50 @@ type Parameter struct {
 	Max     int    `yaml:"max" json:"max"`
 }
 
+// Parameters are groupped by typology
 type GroupObj struct {
 	Name       string               `yaml:"name" json:"name"`
 	Parameters map[string]Parameter `yaml:"parameters" json:"parameters"`
 }
 
+// Groups are organized by Families
 type Family struct {
 	Name   string              `yaml:"name" json:"name"`
 	Groups map[string]GroupObj `yaml:"groups" json:"groups"`
 }
 
+// returns the Dimension using ID attribute
+func (conf *Configuration) GetDimensionByID(id int) Dimension {
+	for i := 0; i < len(conf.Dimension); i++ {
+		if conf.Dimension[i].Id == id {
+			return conf.Dimension[i]
+		}
+
+	}
+	return Dimension{0, "", 0, 0}
+}
+
+// returns the Load Type using ID attribute
+func (conf *Configuration) GetLoadByID(id int) LoadType {
+	for i := 0; i < len(conf.LoadType); i++ {
+		if conf.LoadType[i].Id == id {
+			return conf.LoadType[i]
+		}
+
+	}
+	return LoadType{0, "", ""}
+
+}
+
+// here is where we define the different options
+// it will be possible to increment the supported solutions adding here the items
 func (conf *Configuration) Init() {
 
 	conf.Dimension = []Dimension{
 		{1, "XSmall", 1000, 2},
-		{2, "Small", 1500, 4},
-		{3, "Medium", 2500, 8},
-		{4, "Large", 4500, 16},
+		{2, "Small", 2500, 4},
+		{3, "Medium", 4500, 8},
+		{4, "Large", 6500, 16},
 		{5, "XLarge", 8500, 32},
 	}
 
@@ -73,6 +109,9 @@ func (conf *Configuration) Init() {
 }
 
 func (family *Family) Init() map[string]Family {
+
+	// supported parameters are defined here with defaults value and ranges.
+	// to add new we can add here the new one then create a proper method to handle the calculation
 
 	connectionGroup := map[string]Parameter{
 		"binlog_cache_size":      {"binlog_cache_size", "configuration", "connection", "32768", "32768", 32768, 0},
@@ -146,4 +185,41 @@ func (family *Family) Init() map[string]Family {
 
 	return families
 
+}
+
+type ProviderParam struct {
+	Name     string
+	Literal  string
+	Value    int64
+	Defvalue int64
+	RMin     int64
+	RMax     int64
+}
+
+func (pP *ProviderParam) Init() map[string]ProviderParam {
+
+	pMap := map[string]ProviderParam{
+		"pc.recovery":               {"pc.recovery", "true", -1, 0, 0, 0},
+		"gcache.size":               {"gcache.size", "%s", 0, 0, 0, 0},
+		"gcache.recover":            {"gcache.recover", "yes", -1, 0, 0, 0},
+		"evs.delayed_keep_period":   {"evs.delayed_keep_period", "PT5%sS", 0, 30, 30, 60},
+		"evs.delay_margin":          {"evs.delay_margin", "PT%sS", 0, 1, 1, 30},
+		"evs.send_window":           {"evs.send_window", "PT%sS", 0, 4, 4, 1024},
+		"evs.user_send_window":      {"evs.user_send_window", "PT%sS", 0, 2, 2, 1024},
+		"evs.inactive_check_period": {"evs.inactive_check_period", "PT%sS", 0, 1, 1, 5},
+		"evs.inactive_timeout":      {"evs.inactive_timeout", "PT%sS", 0, 15, 15, 120},
+		"evs.join_retrans_period":   {"evs.join_retrans_period", "PT%sS", 0, 1, 1, 5},
+		"evs.suspect_timeout":       {"evs.suspect_timeout", "PT%sS", 0, 5, 5, 60},
+		"evs.stats_report_period":   {"evs.stats_report_period", "PT%sM", 0, 1, 1, 1},
+		"gcs.fc_limit":              {"gcs.fc_limit", "PT%sS", 0, 16, 16, 128},
+		"gcs.max_packet_size":       {"gcs.max_packet_size", "%s", 0, 32616, 32616, 131072},
+		"gmcast.peer_timeout":       {"gmcast.peer_timeout", "PT%sS", 0, 3, 3, 15},
+		"gmcast.time_wait":          {"gmcast.time_wait", "PT%sS", 0, 5, 5, 18},
+		"evs.max_install_timeouts":  {"evs.max_install_timeouts", "%s", 0, 1, 1, 5},
+		"pc.announce_timeout":       {"pc.announce_timeout", "PT%sS", 0, 3, 3, 60},
+		"pc.linger":                 {"pc.linger", "PT%sS", 0, 2, 2, 60},
+	}
+	//		"gcs.fc_factor":             {"gcs.fc_factor", "%s", 0, 0.5, 0.5, 0.9},
+
+	return pMap
 }
