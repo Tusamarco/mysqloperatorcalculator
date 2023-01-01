@@ -22,7 +22,7 @@ type references struct {
 	cpus               int     //total cpus
 	gcache             int64   // assigned gcache dimension
 	gcacheFootprint    int64   // expected file footprint in memory
-	gcacheLoad         int     // gcache load adj factor base don type of load
+	gcacheLoad         float64 // gcache load adj factor base don type of load
 	memoryLeftover     int64   // memory free after all calculation
 	innodbRedoLogDim   int64   // total redolog dimension
 	loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
@@ -68,7 +68,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 		dim.Cpu,
 		0,
 		0,
-		0,
+		1,
 		0,
 		0,
 		0.0,
@@ -88,6 +88,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	c.reference.loadAdjustment = c.getAdjFactor()
 	c.reference.loadFactor = (1 - (c.reference.loadAdjustment / float32(c.reference.loadAdjustmentMax)))
 	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memory) * 0.65)
+	c.reference.gcacheLoad = c.getGcacheLoad()
 
 	var p o.ProviderParam
 	c.families = fam
@@ -103,13 +104,22 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	// 1 get connections
 	// redolog
 	// gcache
+	//Innodb Bufferpool + params
+	// server
 	// galera provider
-	// innodb
 
+	// connection buffers
 	c.getConnectionBuffers()
-	c.getInnodbParams()
 
-	c.getGcacheDimension()
+	// Innodb Redolog
+	c.getInnodbRedolog()
+
+	// Gcache
+	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
+	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
+
+	// Innodb BP and Params
+	c.getInnodbParmameters()
 
 	b := c.GetAllGaleraProviderOptionsAsString()
 
@@ -260,13 +270,9 @@ func (c *Configurator) sumConnectionBuffers(params map[string]o.Parameter) {
 	log.Debug(fmt.Sprintf("Total memory: %d ;  connections memory : %d ; memory leftover: %d", c.reference.memory, c.reference.connBuffersMemTot, c.reference.memoryLeftover))
 }
 
-func (c *Configurator) getGcacheDimension() {
-
-}
-
 // define global dimension for redolog
 
-func (c *Configurator) getInnodbParams(){
+func (c *Configurator) getInnodbRedolog() {
 
 	parameter := c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"]
 
@@ -296,21 +302,18 @@ func (c *Configurator) getRedologDimensionTot(inParameter o.Parameter) o.Paramet
 	c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"] = parameter
 
 	// Calculate the dimension per redolog file base on dimension and number
-	a , _ :=  strconv.ParseInt(parameter.Value,10, 64)
-	inParameter.Value = strconv.FormatInt(redologTotDimension / a,10)
+	a, _ := strconv.ParseInt(parameter.Value, 10, 64)
+	inParameter.Value = strconv.FormatInt(redologTotDimension/a, 10)
 
 	return inParameter
 
-
 }
 
-// calculate the number of rfile for redolog
+// calculate the number of file for redolog
 func (c *Configurator) getRedologfilesNumber(dimension int64, parameter o.Parameter) o.Parameter {
-	//if(I23 < 500,2,if(AND(I23 > 500, I23 < 1000),if(I17 =1, ROUNDDOWN(3 * 0.7),3 ),if(AND(I23 > 1001, I23 < 2000),if(I17 =1, ROUNDDOWN(5 * 0.7),5 ),
-	//if(and(I23 > 2001, I23 < 6000), if(I17 =1, ROUNDDOWN(8 * 0.7),8 ),if(I23 > 6001,ROUNDDOWN(I23/300,0))))))
 
 	// transform redolog dimension into MB
-	dimension = (dimension/1025)/1025
+	dimension = int64(math.Ceil((float64(dimension) / 1025) / 1025))
 
 	switch {
 	case dimension < 500:
@@ -330,7 +333,7 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter o.Parame
 		} else {
 			parameter.Value = "5"
 		}
-	case dimension > 2001 && dimension < 6000:
+	case dimension > 2001 && dimension < 4000:
 		if c.reference.loadID == 1 {
 
 			parameter.Value = strconv.FormatFloat(math.Floor(8.0*0.7), 'f', 0, 64)
@@ -338,10 +341,61 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter o.Parame
 			parameter.Value = "8"
 		}
 
-	case dimension > 6000:
-			parameter.Value = strconv.FormatFloat(math.Floor(float64(dimension)/400), 'f', 0, 64)
+	case dimension > 4000:
+		parameter.Value = strconv.FormatFloat(math.Floor(float64(dimension)/400), 'f', 0, 64)
 	}
 
 	return parameter
 
+}
+
+//adjust the gcache dimension based on the type of load
+func (c *Configurator) getGcacheLoad() float64 {
+	switch c.reference.loadID {
+	case 1:
+		return 1
+	case 2:
+		return 1.15
+	case 3:
+		return 1.2
+	default:
+		return 1
+	}
+}
+
+func (c *Configurator) getInnodbParmameters() {
+	group := c.families["pxc"].Groups["configuration_innodb"]
+	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
+	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
+
+	c.families["pxc"].Groups["innodb_adaptive_hash_index"] = group
+}
+
+func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Parameter {
+	switch c.reference.loadID {
+	case 1:
+		parameter.Value = "True"
+		return parameter
+	case 2:
+		parameter.Value = "True"
+		return parameter
+	case 3:
+		parameter.Value = "False"
+		return parameter
+	default:
+		parameter.Value = "True"
+		return parameter
+	}
+
+	return parameter
+
+}
+
+// calculate BP removing from available memory the connections buffers, gcache memory footprint and give a % of additional space
+func (c *Configurator) paramInnoDBBufferPool(parameter o.Parameter) o.Parameter {
+
+	var bufferPool int64
+	bufferPool = int64(math.Floor(float64(c.reference.memory-(c.reference.connBuffersMemTot+c.reference.gcacheFootprint)) * 0.9))
+	parameter.Value = strconv.FormatInt(bufferPool, 10)
+	return parameter
 }
