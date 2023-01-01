@@ -107,7 +107,8 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	// innodb
 
 	c.getConnectionBuffers()
-	c.getRedolog()
+	c.getInnodbParams()
+
 	c.getGcacheDimension()
 
 	b := c.GetAllGaleraProviderOptionsAsString()
@@ -264,7 +265,15 @@ func (c *Configurator) getGcacheDimension() {
 }
 
 // define global dimension for redolog
-func (c *Configurator) getRedolog() {
+
+func (c *Configurator) getInnodbParams(){
+
+	parameter := c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"]
+
+	c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"] = c.getRedologDimensionTot(parameter)
+}
+
+func (c *Configurator) getRedologDimensionTot(inParameter o.Parameter) o.Parameter {
 
 	var redologTotDimension int64
 
@@ -278,20 +287,34 @@ func (c *Configurator) getRedolog() {
 	default:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.15 + (0.15 * c.reference.loadFactor)))
 	}
-	parameter := c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"]
+	// Store in reference the total redolog dimension
+	c.reference.innodbRedoLogDim = redologTotDimension
 
-	parameter = c.getRedologfiles(redologTotDimension, parameter)
+	//Calculate the number of file base on the dimension
+	parameter := c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"]
+	parameter = c.getRedologfilesNumber(redologTotDimension, parameter)
+	c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"] = parameter
+
+	// Calculate the dimension per redolog file base on dimension and number
+	a , _ :=  strconv.ParseInt(parameter.Value,10, 64)
+	inParameter.Value = strconv.FormatInt(redologTotDimension / a,10)
+
+	return inParameter
+
 
 }
 
 // calculate the number of rfile for redolog
-func (c *Configurator) getRedologfiles(dimension int64, parameter o.Parameter) o.Parameter {
+func (c *Configurator) getRedologfilesNumber(dimension int64, parameter o.Parameter) o.Parameter {
 	//if(I23 < 500,2,if(AND(I23 > 500, I23 < 1000),if(I17 =1, ROUNDDOWN(3 * 0.7),3 ),if(AND(I23 > 1001, I23 < 2000),if(I17 =1, ROUNDDOWN(5 * 0.7),5 ),
 	//if(and(I23 > 2001, I23 < 6000), if(I17 =1, ROUNDDOWN(8 * 0.7),8 ),if(I23 > 6001,ROUNDDOWN(I23/300,0))))))
 
+	// transform redolog dimension into MB
+	dimension = (dimension/1025)/1025
+
 	switch {
 	case dimension < 500:
-		parameter.Value = 2
+		parameter.Value = "2"
 	case dimension > 500 && dimension < 1000:
 		if c.reference.loadID == 1 {
 
@@ -300,6 +323,23 @@ func (c *Configurator) getRedologfiles(dimension int64, parameter o.Parameter) o
 			parameter.Value = "3"
 		}
 
+	case dimension > 1001 && dimension < 2000:
+		if c.reference.loadID == 1 {
+
+			parameter.Value = strconv.FormatFloat(math.Floor(5.0*0.7), 'f', 0, 64)
+		} else {
+			parameter.Value = "5"
+		}
+	case dimension > 2001 && dimension < 6000:
+		if c.reference.loadID == 1 {
+
+			parameter.Value = strconv.FormatFloat(math.Floor(8.0*0.7), 'f', 0, 64)
+		} else {
+			parameter.Value = "8"
+		}
+
+	case dimension > 6000:
+			parameter.Value = strconv.FormatFloat(math.Floor(float64(dimension)/400), 'f', 0, 64)
 	}
 
 	return parameter
