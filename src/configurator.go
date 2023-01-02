@@ -25,6 +25,7 @@ type references struct {
 	gcacheLoad         float64 // gcache load adj factor base don type of load
 	memoryLeftover     int64   // memory free after all calculation
 	innodbRedoLogDim   int64   // total redolog dimension
+	innoDBbpSize       int64   // Calculated BP to apply
 	loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
 	loadAdjustmentMax  int     // Upper limit given optimal condition between CPU resources and connections using as minimal connections=50
 	loadFactor         float32 // Load factor for calculation based on loadAdjustment
@@ -34,6 +35,7 @@ type references struct {
 	tmpTableFootprint  int64   // tempTable expected footprint in memory
 	connBuffersMemTot  int64   // Total mem use for all connection buffers + temp table
 	idealBufferPoolDIm int64   // Theoretical ideal BP dimension (rule of the thumb)
+	innoDBBPInstances  int     //  assignied number of BP
 }
 
 // return all provider option considered as single string for the parameter value
@@ -74,9 +76,11 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 		0.0,
 		0,
 		0.0,
+		0,
 		load.Id,
 		dim.Id,
 		r.Connections,
+		0,
 		0,
 		0,
 		0}
@@ -120,6 +124,9 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 
 	// Innodb BP and Params
 	c.getInnodbParmameters()
+
+	// set Server params
+	c.getServerParameters()
 
 	b := c.GetAllGaleraProviderOptionsAsString()
 
@@ -367,8 +374,12 @@ func (c *Configurator) getInnodbParmameters() {
 	group := c.families["pxc"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
 	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
+	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
+	group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
+	group.Parameters["innodb_purge_threads"] = c.paramInnoDBpurgeThreads(group.Parameters["innodb_purge_threads"])
+	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
 
-	c.families["pxc"].Groups["innodb_adaptive_hash_index"] = group
+	c.families["pxc"].Groups["configuration_innodb"] = group
 }
 
 func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Parameter {
@@ -397,5 +408,142 @@ func (c *Configurator) paramInnoDBBufferPool(parameter o.Parameter) o.Parameter 
 	var bufferPool int64
 	bufferPool = int64(math.Floor(float64(c.reference.memory-(c.reference.connBuffersMemTot+c.reference.gcacheFootprint)) * 0.9))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
+	c.reference.innoDBbpSize = bufferPool
+	return parameter
+}
+
+// number of instance can only be more than 1 when we have mor ethan 1 core and BP size will allow it
+// to avoid too many bp we should not go below 500m dimension
+func (c *Configurator) paramInnoDBBufferPoolInstances(parameter o.Parameter) o.Parameter {
+	instances := 1
+	if c.reference.cpus > 2000 {
+		bpSize := float64(((c.reference.innoDBbpSize / 1024) / 1024) / 1024)
+		maxCpus := float64(c.reference.cpus / 1000)
+
+		factor := bpSize / maxCpus
+
+		if factor > 1 {
+			instances = int(maxCpus * 2)
+		} else if factor < 1 && factor > 0.4 {
+			instances = int(maxCpus)
+		} else {
+			instances = int(math.Ceil(maxCpus / 2))
+		}
+
+		parameter.Value = strconv.FormatInt(int64(instances), 10)
+	} else {
+		parameter.Value = "1"
+	}
+	c.reference.innoDBBPInstances = instances
+	return parameter
+}
+
+func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter o.Parameter) o.Parameter {
+	parameter.Value = strconv.Itoa(c.reference.innoDBBPInstances)
+
+	return parameter
+}
+
+// purge threads should be set on the base of the table involved in parallel DML, here we assume that a load with intense OLTP has more parallel tables involved than the others
+// the g cache load factor is the one use to tune
+func (c *Configurator) paramInnoDBpurgeThreads(parameter o.Parameter) o.Parameter {
+
+	threads := 4
+	if (c.reference.cpus / 1000) > 4 {
+		valore := float64(c.reference.cpus/1000) * float64(c.reference.gcacheLoad)
+		threads = int(math.Ceil(valore))
+	}
+
+	if threads > 32 {
+		threads = 32
+	}
+
+	parameter.Value = strconv.Itoa(threads)
+
+	return parameter
+}
+
+// TODO  this must reflect the storage class used which at the moment is not implemented yet
+// so what we will do is just to stay out of it and keep  it base of the load
+// Advisor thing
+func (c *Configurator) paramInnoDBIOCapacityMax(parameter o.Parameter) o.Parameter {
+	switch c.reference.loadID {
+	case 1:
+		parameter.Value = "1400"
+		return parameter
+	case 2:
+		parameter.Value = "1800"
+		return parameter
+	case 3:
+		parameter.Value = "2000"
+		return parameter
+	default:
+		parameter.Value = "1400"
+		return parameter
+	}
+
+	return parameter
+
+}
+
+func (c *Configurator) getServerParameters() {
+
+	group := c.families["pxc"].Groups["configuration_server"]
+	group.Parameters["max_connections"] = c.paramServerMaxConnections(group.Parameters["max_connections"])
+	group.Parameters["thread_pool_size"] = c.paramServerThreadPool(group.Parameters["thread_pool_size"])
+	group.Parameters["table_definition_cache"] = c.paramServerTableDefinitionCache(group.Parameters["table_definition_cache"])
+	group.Parameters["table_open_cache"] = c.paramServerTableOpenCache(group.Parameters["table_open_cache"])
+	group.Parameters["thread_stack"] = c.paramServerThreadStack(group.Parameters["thread_stack"])
+	group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstaces(group.Parameters["table_open_cache_instances"])
+
+	c.families["pxc"].Groups["configuration_server"] = group
+
+}
+
+// set max connection + 2 for admin
+func (c *Configurator) paramServerMaxConnections(parameter o.Parameter) o.Parameter {
+
+	parameter.Value = strconv.Itoa(c.reference.connections + 2)
+
+	return parameter
+
+}
+
+// about thread pool the default is the number of CPU but we will try to push a bit more doubling them but never going over the double of the dimension threads
+func (c *Configurator) paramServerThreadPool(parameter o.Parameter) o.Parameter {
+	threads := 4
+	cpus := c.reference.cpus / 1000
+
+	// we just set some limits to the cpu range
+	if cpus > 2 && cpus < 256 {
+		threads = cpus * 2
+	}
+
+	parameter.Value = strconv.Itoa(threads)
+
+	return parameter
+}
+
+// TODO  not supported yet need to be tuned on the base of the schema this can be an advisor thing
+func (c *Configurator) paramServerTableDefinitionCache(parameter o.Parameter) o.Parameter {
+
+	return parameter
+}
+
+// TODO not supported yet need to be tuned on the base of the schema this can be an advisor thing
+func (c *Configurator) paramServerTableOpenCache(parameter o.Parameter) o.Parameter {
+
+	return parameter
+}
+
+// TODO not supported yet need to be tuned on the base of the schema this can be an advisor thing
+func (c *Configurator) paramServerThreadStack(parameter o.Parameter) o.Parameter {
+
+	return parameter
+}
+
+// default is 16 but we have seen that this value is crazy high and create memory overload and a lot of fragmentation Advisor to tune)
+func (c *Configurator) paramServerTableOpenCacheInstaces(parameter o.Parameter) o.Parameter {
+	parameter.Value = strconv.Itoa(4)
 	return parameter
 }

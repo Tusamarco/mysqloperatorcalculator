@@ -124,6 +124,7 @@ func (family *Family) Init() map[string]Family {
 	}
 
 	serverGroup := map[string]Parameter{
+		"max_connections":             {"max_connections", "configuration", "server", "50", "2", 2, 65536},
 		"thread_pool_size":            {"thread_pool_size", "configuration", "server", "2", "2", 2, 64},
 		"table_definition_cache":      {"table_definition_cache", "configuration", "server", "4096", "4096", 400, 524288},
 		"table_open_cache":            {"table_open_cache", "configuration", "server", "4096", "4096", 400, 524288},
