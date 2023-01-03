@@ -42,19 +42,20 @@ type references struct {
 func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 
 	var b bytes.Buffer
-	b.WriteString(`"`)
+	//b.WriteString(`"`)
 
 	for key, param := range c.providerParams {
 		b.WriteString(key)
 		b.WriteString(`=`)
 		if param.Value >= 0 {
 			b.WriteString(fmt.Sprintf(param.Literal, strconv.FormatInt(param.Value, 10)))
+
 		} else {
 			b.WriteString(param.Literal)
 		}
 		b.WriteString(";")
 	}
-	b.WriteString(`"`)
+	//b.WriteString(`"`)
 	return b
 }
 
@@ -128,9 +129,8 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	// set Server params
 	c.getServerParameters()
 
-	b := c.GetAllGaleraProviderOptionsAsString()
-
-	print(b.String())
+	// set galera provider options
+	c.getGaleraParameters()
 
 	return c.families
 
@@ -545,5 +545,70 @@ func (c *Configurator) paramServerThreadStack(parameter o.Parameter) o.Parameter
 // default is 16 but we have seen that this value is crazy high and create memory overload and a lot of fragmentation Advisor to tune)
 func (c *Configurator) paramServerTableOpenCacheInstaces(parameter o.Parameter) o.Parameter {
 	parameter.Value = strconv.Itoa(4)
+	return parameter
+}
+
+func (c *Configurator) getGaleraProvider(inParameter o.Parameter) o.Parameter {
+	for key, param := range c.providerParams {
+		if param.Value >= 0 {
+			if key != "evs.stats_report_period" {
+				param.Value = int64((float32(param.RMax) * c.reference.loadFactor))
+			} else {
+				param.Value = 1
+			}
+			c.providerParams[key] = param
+		}
+
+	}
+	asString := c.GetAllGaleraProviderOptionsAsString()
+	inParameter.Value = asString.String()
+
+	return inParameter
+}
+
+func (c *Configurator) getGaleraParameters() {
+	group := c.families["pxc"].Groups["configuration_galera"]
+	group.Parameters["wsrep-provider-options"] = c.getGaleraProvider(group.Parameters["wsrep-provider-options"])
+	group.Parameters["wsrep_sync_wait"] = c.getGaleraSyncWait(group.Parameters["wsrep_sync_wait"])
+	group.Parameters["wsrep_slave_threads"] = c.getGaleraSlaveThreads(group.Parameters["wsrep_slave_threads"])
+	group.Parameters["wsrep_trx_fragment_size"] = c.getGaleraFragmentSize(group.Parameters["wsrep_trx_fragment_size"])
+
+	c.families["pxc"].Groups["configuration_galera"] = group
+}
+
+func (c *Configurator) getGaleraSyncWait(parameter o.Parameter) o.Parameter {
+	switch c.reference.loadID {
+	case 1:
+		parameter.Value = "0"
+		return parameter
+	case 2:
+		parameter.Value = "3"
+		return parameter
+	case 3:
+		parameter.Value = "3"
+		return parameter
+	default:
+		parameter.Value = "0"
+		return parameter
+	}
+
+}
+
+func (c *Configurator) getGaleraSlaveThreads(parameter o.Parameter) o.Parameter {
+
+	cpus := int(math.Floor(float64(c.reference.cpus / 1000)))
+
+	if cpus <= 1 {
+		cpus = 1
+	} else {
+		cpus = cpus / 2
+	}
+	parameter.Value = strconv.Itoa(cpus)
+
+	return parameter
+}
+
+// TODO this is something to tune with advisors for now let us set a default of 1MB period
+func (c *Configurator) getGaleraFragmentSize(parameter o.Parameter) o.Parameter {
 	return parameter
 }
