@@ -113,6 +113,10 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	// server
 	// galera provider
 
+	//probes
+	//pxc
+	//haproxy
+
 	// connection buffers
 	c.getConnectionBuffers()
 
@@ -131,6 +135,12 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 
 	// set galera provider options
 	c.getGaleraParameters()
+
+	// set Probes timeouts
+	// PXC
+	// HAProxy
+	c.getProbesAndResources("pxc")
+	c.getProbesAndResources("haproxy")
 
 	return c.families
 
@@ -611,4 +621,45 @@ func (c *Configurator) getGaleraSlaveThreads(parameter o.Parameter) o.Parameter 
 // TODO this is something to tune with advisors for now let us set a default of 1MB period
 func (c *Configurator) getGaleraFragmentSize(parameter o.Parameter) o.Parameter {
 	return parameter
+}
+
+func (c *Configurator) getProbesAndResources(family string) {
+	group := c.families[family].Groups["resources"]
+	group = c.setResources(group)
+	c.families[family].Groups["resources"] = group
+
+	// setting readiness and liveness
+	group = c.families[family].Groups["readinessProbe"]
+	parameter := group.Parameters["timeoutSeconds"]
+	parameter.Value = strconv.FormatFloat(math.Ceil(float64(float32(parameter.Max)*c.reference.loadFactor)), 'f', 0, 64)
+	group.Parameters["timeoutSeconds"] = parameter
+	c.families[family].Groups["readinessProbe"] = group
+
+	group = c.families[family].Groups["livenessProbe"]
+	parameter = group.Parameters["timeoutSeconds"]
+	parameter.Value = strconv.FormatFloat(math.Ceil(float64(float32(parameter.Max)*c.reference.loadFactor)), 'f', 0, 64)
+	group.Parameters["timeoutSeconds"] = parameter
+	c.families[family].Groups["livenessProbe"] = group
+
+}
+
+func (c *Configurator) setResources(group o.GroupObj) o.GroupObj {
+	// we set the memory request as 95% of the available memory and set Limit as 100%
+	parameter := group.Parameters["request_memory"]
+	parameter.Value = strconv.FormatFloat(float64(c.reference.memory)*0.95, 'f', 0, 64)
+	group.Parameters["request_memory"] = parameter
+
+	parameter = group.Parameters["limit_memory"]
+	parameter.Value = strconv.FormatInt(c.reference.memory, 10)
+	group.Parameters["limit_memory"] = parameter
+
+	parameter = group.Parameters["request_cpu"]
+	parameter.Value = strconv.FormatFloat(float64(c.reference.cpus)*0.95, 'f', 0, 64)
+	group.Parameters["request_cpu"] = parameter
+
+	parameter = group.Parameters["limit_cpu"]
+	parameter.Value = strconv.Itoa(c.reference.cpus)
+	group.Parameters["limit_cpu"] = parameter
+
+	return group
 }
