@@ -1,8 +1,28 @@
 package Objects
 
+//***********************************
+// Constants
+//***********************************
+const OK_I = 1001
+const CLOSETOLIMIT_I = 2001
+const OVERUTILIZING_I = 3001
+const ERROREXEC_I = 5001
+
+const OK_T = "Execution was successful and resources match the possible requests"
+const CLOSETOLIMIT_T = "Execution was successful however resources are close to saturation based on the load requested"
+const OVERUTILIZING_T = "Resources not enough to cover the requested load "
+const ERROREXEC_T = "There is an error while processing. See details: %s"
+
 //*********************************
 // Structure definitions
 //********************************
+
+//Message is the retruned message
+type ResponseMessage struct {
+	MType int    `json:"type"`
+	MName string `json:"name"`
+	MText string `json:"text"`
+}
 
 // used to pass available configurations
 type Configuration struct {
@@ -78,6 +98,20 @@ func (conf *Configuration) GetLoadByID(id int) LoadType {
 	}
 	return LoadType{0, "", ""}
 
+}
+
+func (respM *ResponseMessage) GetMessageText(id int) string {
+	switch id {
+	case OK_I:
+		return OK_T
+	case CLOSETOLIMIT_I:
+		return CLOSETOLIMIT_T
+	case OVERUTILIZING_I:
+		return OVERUTILIZING_T
+	case ERROREXEC_I:
+		return ERROREXEC_T
+	}
+	return "Unhandled message ID"
 }
 
 // here is where we define the different options
