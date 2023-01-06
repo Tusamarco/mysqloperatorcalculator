@@ -13,6 +13,12 @@ import (
 	"strconv"
 )
 
+//type mysqloperatorcalculator struct {
+//	writer http.ResponseWriter
+//	request *http.Request
+//
+//}
+
 func main() {
 
 	var (
@@ -33,7 +39,7 @@ func main() {
 
 	//just check if we need to pass version or help
 	if version {
-		fmt.Println("PXC calculator for Operator Version: ", versionS)
+		fmt.Println("MySQL calculator for Operator Version: ", versionS)
 		exitWithCode(0)
 	} else if helpB {
 		flag.PrintDefaults()
@@ -124,6 +130,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	// here is the calculation step
 	c.ProcessRequest()
+	responseMsg = c.EvaluateResources(responseMsg)
 
 	err := ReturnResponse(writer, request, &ConfRequest, responseMsg, families)
 	if err != nil {
@@ -137,8 +144,46 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 }
 
 func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *Objects.ConfigurationRequest, message Objects.ResponseMessage, families map[string]Objects.Family) error {
-	//output, err := json.Marshal(&conf)
+	var b bytes.Buffer
+	var err error
 
+	if ConfRequest.Output == "json" {
+		b, err = getJSONOutput(message, ConfRequest, families)
+	} else if ConfRequest.Output == "human" {
+		b, err = getHumanOutput(message, ConfRequest, families)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Return the information
+	writer.Header().Set("Content/Type", "application/json")
+	writer.Write(b.Bytes())
+	return nil
+}
+
+func getHumanOutput(message Objects.ResponseMessage, request *Objects.ConfigurationRequest, families map[string]Objects.Family) (bytes.Buffer, error) {
+	var b bytes.Buffer
+	var err error
+	// process one section a time
+	b.WriteString("[message]\n")
+	b.WriteString("name = " + message.MName + "\n")
+	b.WriteString("type = " + message.GetMessageText(message.MType) + "\n")
+	b.WriteString("text = " + message.MText + "\n")
+
+	family := families["mysql"]
+	fb := family.ParseGroupsHuman()
+	b.Write(fb.Bytes())
+
+	family = families["proxy"]
+	fb = family.ParseGroupsHuman()
+	b.Write(fb.Bytes())
+
+	return b, err
+}
+
+func getJSONOutput(message Objects.ResponseMessage, ConfRequest *Objects.ConfigurationRequest, families map[string]Objects.Family) (bytes.Buffer, error) {
+	//output, err := json.Marshal(&conf)
 	messageStream, err := json.MarshalIndent(message, "", "  ")
 	// we store incoming request for reference when passing back the configuration
 	processedRequest, err := json.MarshalIndent(&ConfRequest, "", "  ")
@@ -156,15 +201,10 @@ func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfReque
 	b.WriteString(`,"answer":`)
 	b.Write(output)
 	b.WriteString("}}")
-
 	if err != nil {
-		return err
+		return b, err
 	}
-
-	// Return the information
-	writer.Header().Set("Content/Type", "application/json")
-	writer.Write(b.Bytes())
-	return nil
+	return b, err
 }
 
 func handleGetSupported(writer http.ResponseWriter, request *http.Request) error {

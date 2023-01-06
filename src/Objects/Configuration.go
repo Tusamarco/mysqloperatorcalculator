@@ -1,5 +1,9 @@
 package Objects
 
+import (
+	"bytes"
+)
+
 //***********************************
 // Constants
 //***********************************
@@ -26,17 +30,20 @@ type ResponseMessage struct {
 
 // used to pass available configurations
 type Configuration struct {
+	DBType      []string    `json:"dbtype"`
 	Dimension   []Dimension `json:"dimension"`
 	LoadType    []LoadType  `json:"loadtype"`
 	Connections []int       `json:"connections"`
+	Output      []string    `json:"output"`
 }
 
 // used to store the incoming request
 type ConfigurationRequest struct {
+	DBType      string    `json:"dbtype"`
 	Dimension   Dimension `json:"dimension"`
 	LoadType    LoadType  `json:"loadtype"`
 	Connections int       `json:"connections"`
-	Human       bool      `json:"human"`
+	Output      string    `json:"output"`
 }
 
 // used to represent the POD dimension
@@ -117,7 +124,8 @@ func (respM *ResponseMessage) GetMessageText(id int) string {
 // here is where we define the different options
 // it will be possible to increment the supported solutions adding here the items
 func (conf *Configuration) Init() {
-
+	conf.DBType = []string{"group_replication", "pxc"}
+	conf.Output = []string{"human", "json"}
 	conf.Dimension = []Dimension{
 		{1, "XSmall", 1000, 2},
 		{2, "Small", 2500, 4},
@@ -217,7 +225,7 @@ func (family *Family) Init() map[string]Family {
 	pxcGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
 	pxcGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
 
-	families := map[string]Family{"pxc": {"pxc", pxcGroups}, "haproxy": {"haproxy", haproxyGroups}}
+	families := map[string]Family{"mysql": {"pxc", pxcGroups}, "proxy": {"haproxy", haproxyGroups}}
 
 	return families
 
@@ -258,4 +266,27 @@ func (pP *ProviderParam) Init() map[string]ProviderParam {
 	//		"gcs.fc_factor":             {"gcs.fc_factor", "%s", 0, 0.5, 0.5, 0.9},
 
 	return pMap
+}
+
+func (f Family) ParseGroupsHuman() bytes.Buffer {
+	var b bytes.Buffer
+
+	b.WriteString("[" + f.Name + "]" + "\n")
+	for key, group := range f.Groups {
+		b.WriteString("    [" + key + "]" + "\n")
+		pb := f.parseParamsHuman(group)
+		b.Write(pb.Bytes())
+	}
+
+	return b
+
+}
+
+func (f Family) parseParamsHuman(group GroupObj) bytes.Buffer {
+	var b bytes.Buffer
+	for key, param := range group.Parameters {
+		b.WriteString("      " + key + " = " + param.Value + "\n")
+	}
+
+	return b
 }

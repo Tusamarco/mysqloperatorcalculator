@@ -124,8 +124,7 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	c.getInnodbRedolog()
 
 	// Gcache
-	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
-	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
+	c.getGcache()
 
 	// Innodb BP and Params
 	c.getInnodbParmameters()
@@ -137,13 +136,19 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	c.getGaleraParameters()
 
 	// set Probes timeouts
-	// PXC
-	// HAProxy
-	c.getProbesAndResources("pxc")
-	c.getProbesAndResources("haproxy")
+	// MySQL
+	// Proxy
+	c.getProbesAndResources("mysql")
+	c.getProbesAndResources("proxy")
 
 	return c.families
 
+}
+
+func (c *Configurator) getGcache() {
+	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
+	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
+	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
 func (c *Configurator) getAdjFactor() float32 {
@@ -171,7 +176,7 @@ func (c *Configurator) checkValidity() bool {
 //processing per connections first
 func (c *Configurator) getConnectionBuffers() {
 
-	group := c.families["pxc"].Groups["configuration_connection"]
+	group := c.families["mysql"].Groups["configuration_connection"]
 	group.Parameters["binlog_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_cache_size"])
 	group.Parameters["binlog_stmt_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_stmt_cache_size"])
 	group.Parameters["join_buffer_size"] = c.paramJoinBuffer(group.Parameters["join_buffer_size"])
@@ -182,7 +187,7 @@ func (c *Configurator) getConnectionBuffers() {
 
 	// calculate totals and store in references then pass back new values to stored objects
 	c.sumConnectionBuffers(group.Parameters)
-	c.families["pxc"].Groups["configuration_connection"] = group
+	c.families["mysql"].Groups["configuration_connection"] = group
 }
 
 func (c *Configurator) paramBinlogCacheSize(inParameter o.Parameter) o.Parameter {
@@ -284,16 +289,16 @@ func (c *Configurator) sumConnectionBuffers(params map[string]o.Parameter) {
 
 	//update available memory in the references
 	c.reference.memoryLeftover = (c.reference.memory - c.reference.connBuffersMemTot)
-	log.Debug(fmt.Sprintf("Total memory: %d ;  connections memory : %d ; memory leftover: %d", c.reference.memory, c.reference.connBuffersMemTot, c.reference.memoryLeftover))
+	//log.Debug(fmt.Sprintf("Total memory: %d ;  connections memory : %d ; memory leftover: %d", c.reference.memory, c.reference.connBuffersMemTot, c.reference.memoryLeftover))
 }
 
 // define global dimension for redolog
 
 func (c *Configurator) getInnodbRedolog() {
 
-	parameter := c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"]
+	parameter := c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"]
 
-	c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"] = c.getRedologDimensionTot(parameter)
+	c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"] = c.getRedologDimensionTot(parameter)
 }
 
 func (c *Configurator) getRedologDimensionTot(inParameter o.Parameter) o.Parameter {
@@ -314,9 +319,9 @@ func (c *Configurator) getRedologDimensionTot(inParameter o.Parameter) o.Paramet
 	c.reference.innodbRedoLogDim = redologTotDimension
 
 	//Calculate the number of file base on the dimension
-	parameter := c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"]
+	parameter := c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"]
 	parameter = c.getRedologfilesNumber(redologTotDimension, parameter)
-	c.families["pxc"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"] = parameter
+	c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"] = parameter
 
 	// Calculate the dimension per redolog file base on dimension and number
 	a, _ := strconv.ParseInt(parameter.Value, 10, 64)
@@ -381,7 +386,7 @@ func (c *Configurator) getGcacheLoad() float64 {
 }
 
 func (c *Configurator) getInnodbParmameters() {
-	group := c.families["pxc"].Groups["configuration_innodb"]
+	group := c.families["mysql"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
 	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
 	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
@@ -389,7 +394,7 @@ func (c *Configurator) getInnodbParmameters() {
 	group.Parameters["innodb_purge_threads"] = c.paramInnoDBpurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
 
-	c.families["pxc"].Groups["configuration_innodb"] = group
+	c.families["mysql"].Groups["configuration_innodb"] = group
 }
 
 func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Parameter {
@@ -416,9 +421,10 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Par
 func (c *Configurator) paramInnoDBBufferPool(parameter o.Parameter) o.Parameter {
 
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memory-(c.reference.connBuffersMemTot+c.reference.gcacheFootprint)) * 0.9))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.95))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
+	c.reference.memoryLeftover -= bufferPool
 	return parameter
 }
 
@@ -498,7 +504,7 @@ func (c *Configurator) paramInnoDBIOCapacityMax(parameter o.Parameter) o.Paramet
 
 func (c *Configurator) getServerParameters() {
 
-	group := c.families["pxc"].Groups["configuration_server"]
+	group := c.families["mysql"].Groups["configuration_server"]
 	group.Parameters["max_connections"] = c.paramServerMaxConnections(group.Parameters["max_connections"])
 	group.Parameters["thread_pool_size"] = c.paramServerThreadPool(group.Parameters["thread_pool_size"])
 	group.Parameters["table_definition_cache"] = c.paramServerTableDefinitionCache(group.Parameters["table_definition_cache"])
@@ -506,7 +512,7 @@ func (c *Configurator) getServerParameters() {
 	group.Parameters["thread_stack"] = c.paramServerThreadStack(group.Parameters["thread_stack"])
 	group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstaces(group.Parameters["table_open_cache_instances"])
 
-	c.families["pxc"].Groups["configuration_server"] = group
+	c.families["mysql"].Groups["configuration_server"] = group
 
 }
 
@@ -577,13 +583,13 @@ func (c *Configurator) getGaleraProvider(inParameter o.Parameter) o.Parameter {
 }
 
 func (c *Configurator) getGaleraParameters() {
-	group := c.families["pxc"].Groups["configuration_galera"]
+	group := c.families["mysql"].Groups["configuration_galera"]
 	group.Parameters["wsrep-provider-options"] = c.getGaleraProvider(group.Parameters["wsrep-provider-options"])
 	group.Parameters["wsrep_sync_wait"] = c.getGaleraSyncWait(group.Parameters["wsrep_sync_wait"])
 	group.Parameters["wsrep_slave_threads"] = c.getGaleraSlaveThreads(group.Parameters["wsrep_slave_threads"])
 	group.Parameters["wsrep_trx_fragment_size"] = c.getGaleraFragmentSize(group.Parameters["wsrep_trx_fragment_size"])
 
-	c.families["pxc"].Groups["configuration_galera"] = group
+	c.families["mysql"].Groups["configuration_galera"] = group
 }
 
 func (c *Configurator) getGaleraSyncWait(parameter o.Parameter) o.Parameter {
@@ -662,4 +668,51 @@ func (c *Configurator) setResources(group o.GroupObj) o.GroupObj {
 	group.Parameters["limit_cpu"] = parameter
 
 	return group
+}
+
+// here we give a basic check about the resources and if is over we just set the message as overload and remove the families details
+func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) o.ResponseMessage {
+	totMeme := c.reference.memory
+	reqConnections := c.reference.connections
+	reqCpu := c.reference.cpus
+
+	gcachefootprint := c.reference.gcacheFootprint
+	temTableFootprint := c.reference.tmpTableFootprint
+	connectionMem := c.reference.connBuffersMemTot
+	memleftover := c.reference.memoryLeftover
+
+	var b bytes.Buffer
+	b.WriteString("Tot Memory      = " + strconv.FormatInt(totMeme, 10) + "\n")
+	b.WriteString("Tot CPU         = " + strconv.Itoa(reqCpu) + "\n")
+	b.WriteString("Tot Connections = " + strconv.Itoa(reqConnections) + "\n")
+	b.WriteString("\n")
+	b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcachefootprint, 10) + "\n")
+	b.WriteString("Tmp Table mem Footprint = " + strconv.FormatInt(temTableFootprint, 10) + "\n")
+	b.WriteString("By connection mem tot   = " + strconv.FormatInt(connectionMem, 10) + "\n")
+	b.WriteString("memory leftover         = " + strconv.FormatInt(memleftover, 10) + "\n")
+	b.WriteString("Innodb Bufferpool       = " + strconv.FormatInt(c.reference.innoDBbpSize, 10) + "\n")
+	bpPct := float64(c.reference.innoDBbpSize) / float64(totMeme)
+	b.WriteString("% BP over av memory     = " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
+
+	return fillResponseMessage(bpPct, responseMsg, b)
+
+}
+
+func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) o.ResponseMessage {
+
+	if pct < 0.50 {
+		msg.MType = o.OVERUTILIZING_I
+		msg.MText = "Request cancelled not enough resources details: " + b.String()
+		msg.MName = msg.GetMessageText(msg.MType)
+	} else if pct > 0.50 && pct <= 0.65 {
+		msg.MType = o.CLOSETOLIMIT_I
+		msg.MText = "Request processed however not optimal details: " + b.String()
+		msg.MName = msg.GetMessageText(msg.MType)
+	} else if pct > 0.66 {
+		msg.MType = o.OK_I
+		msg.MText = "Request ok, resources details: " + b.String()
+		msg.MName = msg.GetMessageText(msg.MType)
+	}
+
+	return msg
 }
