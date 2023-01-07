@@ -126,12 +126,22 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	// initialize the configurator (where all the things happens)
 	var c Configurator
-	c.init(ConfRequest, families, conf)
+	responseMsg, connectionsOverload := c.init(ConfRequest, families, conf, responseMsg)
 
-	// here is the calculation step
-	c.ProcessRequest()
-	responseMsg = c.EvaluateResources(responseMsg)
-
+	if connectionsOverload {
+		responseMsg.MName = "Resources Overload"
+		responseMsg.MText = "Too many connections for the choosed dimension. Resource Overlaoad, decrese number of connections OR choose higer CPUs number"
+		families = make(map[string]Objects.Family)
+	} else {
+		// here is the calculation step
+		overUtilizing := false
+		c.ProcessRequest()
+		responseMsg, overUtilizing = c.EvaluateResources(responseMsg)
+		//if request overutilize resources WE DO NOT pass params but message
+		if overUtilizing {
+			families = make(map[string]Objects.Family)
+		}
+	}
 	err := ReturnResponse(writer, request, &ConfRequest, responseMsg, families)
 	if err != nil {
 		return err
@@ -168,7 +178,7 @@ func getHumanOutput(message Objects.ResponseMessage, request *Objects.Configurat
 	// process one section a time
 	b.WriteString("[message]\n")
 	b.WriteString("name = " + message.MName + "\n")
-	b.WriteString("type = " + message.GetMessageText(message.MType) + "\n")
+	b.WriteString("type = " + strconv.Itoa(message.MType) + "\n")
 	b.WriteString("text = " + message.MText + "\n")
 
 	family := families["mysql"]

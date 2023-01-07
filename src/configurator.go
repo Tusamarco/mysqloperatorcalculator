@@ -59,7 +59,7 @@ func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 	return b
 }
 
-func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, conf o.Configuration) {
+func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, conf o.Configuration, message o.ResponseMessage) (o.ResponseMessage, bool) {
 
 	dim := conf.GetDimensionByID(r.Dimension.Id)
 	load := conf.GetLoadByID(r.LoadType.Id)
@@ -89,9 +89,14 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	c.reference = &ref
 
 	// set load factors based on the incoming request
-	c.reference.loadAdjustmentMax = (dim.Cpu / r.Connections)
-	c.reference.loadAdjustment = c.getAdjFactor()
-	c.reference.loadFactor = (1 - (c.reference.loadAdjustment / float32(c.reference.loadAdjustmentMax)))
+	loadConnectionFactor := float32(dim.Cpu) / float32(c.reference.connections)
+	if loadConnectionFactor < 1 {
+		message.MType = o.OVERUTILIZING_I
+		return message, true
+	}
+	c.reference.loadAdjustmentMax = dim.Cpu / 50
+	c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
+	c.reference.loadFactor = (1 - c.reference.loadAdjustment)
 	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memory) * 0.65)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
@@ -100,6 +105,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	c.request = r
 	c.providerParams = p.Init()
 
+	return message, false
 }
 
 func (c *Configurator) ProcessRequest() map[string]o.Family {
@@ -120,27 +126,31 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	// connection buffers
 	c.getConnectionBuffers()
 
-	// Innodb Redolog
-	c.getInnodbRedolog()
+	// let us do a simple check to see if the number of connections is consuming too many resources.
+	conWeight := float64(c.reference.connBuffersMemTot) / float64(c.reference.memory)
+	if conWeight < 0.40 {
 
-	// Gcache
-	c.getGcache()
+		// Innodb Redolog
+		c.getInnodbRedolog()
 
-	// Innodb BP and Params
-	c.getInnodbParmameters()
+		// Gcache
+		c.getGcache()
 
-	// set Server params
-	c.getServerParameters()
+		// Innodb BP and Params
+		c.getInnodbParmameters()
 
-	// set galera provider options
-	c.getGaleraParameters()
+		// set Server params
+		c.getServerParameters()
 
-	// set Probes timeouts
-	// MySQL
-	// Proxy
-	c.getProbesAndResources("mysql")
-	c.getProbesAndResources("proxy")
+		// set galera provider options
+		c.getGaleraParameters()
 
+		// set Probes timeouts
+		// MySQL
+		// Proxy
+		c.getProbesAndResources("mysql")
+		c.getProbesAndResources("proxy")
+	}
 	return c.families
 
 }
@@ -151,16 +161,18 @@ func (c *Configurator) getGcache() {
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
-func (c *Configurator) getAdjFactor() float32 {
+func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
+	impedence := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
+
 	switch c.reference.loadID {
 	case 1:
-		return float32(c.reference.loadAdjustmentMax / 1)
+		return impedence
 	case 2:
-		return float32(c.reference.loadAdjustmentMax / 2)
+		return impedence
 	case 3:
-		return float32(c.reference.loadAdjustmentMax / 3)
+		return impedence
 	case 4:
-		return (float32(c.reference.loadAdjustmentMax) / 3.4)
+		return impedence
 	default:
 		return float32(c.reference.loadAdjustmentMax / 1)
 
@@ -285,7 +297,13 @@ func (c *Configurator) sumConnectionBuffers(params map[string]o.Parameter) {
 			totMemory += v
 		}
 	}
-	c.reference.connBuffersMemTot = (totMemory + c.reference.tmpTableFootprint) * int64(c.reference.connections)
+
+	//once we have the total buffer allocation we calculate the total estiamtion of the temp table based on the load factor to adjust the connection load
+	possibleconnectionTmp := float64(c.reference.connections) * float64(c.reference.loadFactor)
+	possibleTmpMempressure := int64(math.Floor(possibleconnectionTmp)) * c.reference.tmpTableFootprint
+
+	c.reference.connBuffersMemTot = totMemory * int64(possibleconnectionTmp)
+	c.reference.connBuffersMemTot += possibleTmpMempressure
 
 	//update available memory in the references
 	c.reference.memoryLeftover = (c.reference.memory - c.reference.connBuffersMemTot)
@@ -630,6 +648,8 @@ func (c *Configurator) getGaleraFragmentSize(parameter o.Parameter) o.Parameter 
 }
 
 func (c *Configurator) getProbesAndResources(family string) {
+	val := 0
+
 	group := c.families[family].Groups["resources"]
 	group = c.setResources(group)
 	c.families[family].Groups["resources"] = group
@@ -637,13 +657,20 @@ func (c *Configurator) getProbesAndResources(family string) {
 	// setting readiness and liveness
 	group = c.families[family].Groups["readinessProbe"]
 	parameter := group.Parameters["timeoutSeconds"]
-	parameter.Value = strconv.FormatFloat(math.Ceil(float64(float32(parameter.Max)*c.reference.loadFactor)), 'f', 0, 64)
+	val = int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	if val < 1 {
+		val = parameter.Min
+	}
+	parameter.Value = strconv.Itoa(val)
 	group.Parameters["timeoutSeconds"] = parameter
 	c.families[family].Groups["readinessProbe"] = group
 
 	group = c.families[family].Groups["livenessProbe"]
-	parameter = group.Parameters["timeoutSeconds"]
-	parameter.Value = strconv.FormatFloat(math.Ceil(float64(float32(parameter.Max)*c.reference.loadFactor)), 'f', 0, 64)
+	val = int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	if val < 1 {
+		val = parameter.Min
+	}
+	parameter.Value = strconv.Itoa(val)
 	group.Parameters["timeoutSeconds"] = parameter
 	c.families[family].Groups["livenessProbe"] = group
 
@@ -671,7 +698,7 @@ func (c *Configurator) setResources(group o.GroupObj) o.GroupObj {
 }
 
 // here we give a basic check about the resources and if is over we just set the message as overload and remove the families details
-func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) o.ResponseMessage {
+func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.ResponseMessage, bool) {
 	totMeme := c.reference.memory
 	reqConnections := c.reference.connections
 	reqCpu := c.reference.cpus
@@ -682,28 +709,33 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) o.Respon
 	memleftover := c.reference.memoryLeftover
 
 	var b bytes.Buffer
-	b.WriteString("Tot Memory      = " + strconv.FormatInt(totMeme, 10) + "\n")
+	b.WriteString("\n\nTot Memory      = " + strconv.FormatInt(totMeme, 10) + "\n")
 	b.WriteString("Tot CPU         = " + strconv.Itoa(reqCpu) + "\n")
 	b.WriteString("Tot Connections = " + strconv.Itoa(reqConnections) + "\n")
 	b.WriteString("\n")
+	b.WriteString("Gcache mem on disk      = " + strconv.FormatInt(c.reference.gcache, 10) + "\n")
 	b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcachefootprint, 10) + "\n")
+	b.WriteString("\n")
 	b.WriteString("Tmp Table mem Footprint = " + strconv.FormatInt(temTableFootprint, 10) + "\n")
 	b.WriteString("By connection mem tot   = " + strconv.FormatInt(connectionMem, 10) + "\n")
-	b.WriteString("memory leftover         = " + strconv.FormatInt(memleftover, 10) + "\n")
+	b.WriteString("\n")
 	b.WriteString("Innodb Bufferpool       = " + strconv.FormatInt(c.reference.innoDBbpSize, 10) + "\n")
 	bpPct := float64(c.reference.innoDBbpSize) / float64(totMeme)
 	b.WriteString("% BP over av memory     = " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
+	b.WriteString("\n")
+	b.WriteString("memory leftover         = " + strconv.FormatInt(memleftover, 10) + "\n")
 
 	return fillResponseMessage(bpPct, responseMsg, b)
 
 }
 
-func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) o.ResponseMessage {
-
+func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) (o.ResponseMessage, bool) {
+	overUtilizing := false
 	if pct < 0.50 {
 		msg.MType = o.OVERUTILIZING_I
 		msg.MText = "Request cancelled not enough resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
+		overUtilizing = true
 	} else if pct > 0.50 && pct <= 0.65 {
 		msg.MType = o.CLOSETOLIMIT_I
 		msg.MText = "Request processed however not optimal details: " + b.String()
@@ -714,5 +746,5 @@ func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) o.R
 		msg.MName = msg.GetMessageText(msg.MType)
 	}
 
-	return msg
+	return msg, overUtilizing
 }
