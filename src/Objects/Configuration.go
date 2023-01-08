@@ -1,30 +1,67 @@
 package Objects
 
+import (
+	"bytes"
+)
+
+//***********************************
+// Constants
+//***********************************
+const OK_I = 1001
+const CLOSETOLIMIT_I = 2001
+const OVERUTILIZING_I = 3001
+const ERROREXEC_I = 5001
+
+const OK_T = "Execution was successful and resources match the possible requests"
+const CLOSETOLIMIT_T = "Execution was successful however resources are close to saturation based on the load requested"
+const OVERUTILIZING_T = "Resources not enough to cover the requested load "
+const ERROREXEC_T = "There is an error while processing. See details: %s"
+
+//*********************************
+// Structure definitions
+//********************************
+
+//Message is the retruned message
+type ResponseMessage struct {
+	MType int    `json:"type"`
+	MName string `json:"name"`
+	MText string `json:"text"`
+}
+
+// used to pass available configurations
 type Configuration struct {
+	DBType      []string    `json:"dbtype"`
 	Dimension   []Dimension `json:"dimension"`
 	LoadType    []LoadType  `json:"loadtype"`
 	Connections []int       `json:"connections"`
+	Output      []string    `json:"output"`
 }
 
+// used to store the incoming request
 type ConfigurationRequest struct {
+	DBType      string    `json:"dbtype"`
 	Dimension   Dimension `json:"dimension"`
 	LoadType    LoadType  `json:"loadtype"`
 	Connections int       `json:"connections"`
+	Output      string    `json:"output"`
 }
 
+// used to represent the POD dimension
 type Dimension struct {
 	Id     int    `json:"id"`
 	Name   string `json:"name"`
 	Cpu    int    `json:"cpu"`
-	memory int    `json:"memory"`
+	Memory int64  `json:"memory"`
 }
 
+// The different kind of load type
 type LoadType struct {
 	Id      int    `json:"id"`
 	Name    string `json:"name"`
 	Example string `json:"example"`
 }
 
+// generic structure to store Parameters values
 type Parameter struct {
 	Name    string `yaml:"name" json:"name"`
 	Section string `yaml:"section" json:"section"`
@@ -35,23 +72,65 @@ type Parameter struct {
 	Max     int    `yaml:"max" json:"max"`
 }
 
+// Parameters are groupped by typology
 type GroupObj struct {
 	Name       string               `yaml:"name" json:"name"`
 	Parameters map[string]Parameter `yaml:"parameters" json:"parameters"`
 }
 
+// Groups are organized by Families
 type Family struct {
 	Name   string              `yaml:"name" json:"name"`
 	Groups map[string]GroupObj `yaml:"groups" json:"groups"`
 }
 
-func (conf *Configuration) Init() {
+// returns the Dimension using ID attribute
+func (conf *Configuration) GetDimensionByID(id int) Dimension {
+	for i := 0; i < len(conf.Dimension); i++ {
+		if conf.Dimension[i].Id == id {
+			return conf.Dimension[i]
+		}
 
+	}
+	return Dimension{0, "", 0, 0}
+}
+
+// returns the Load Type using ID attribute
+func (conf *Configuration) GetLoadByID(id int) LoadType {
+	for i := 0; i < len(conf.LoadType); i++ {
+		if conf.LoadType[i].Id == id {
+			return conf.LoadType[i]
+		}
+
+	}
+	return LoadType{0, "", ""}
+
+}
+
+func (respM *ResponseMessage) GetMessageText(id int) string {
+	switch id {
+	case OK_I:
+		return OK_T
+	case CLOSETOLIMIT_I:
+		return CLOSETOLIMIT_T
+	case OVERUTILIZING_I:
+		return OVERUTILIZING_T
+	case ERROREXEC_I:
+		return ERROREXEC_T
+	}
+	return "Unhandled message ID"
+}
+
+// here is where we define the different options
+// it will be possible to increment the supported solutions adding here the items
+func (conf *Configuration) Init() {
+	conf.DBType = []string{"group_replication", "pxc"}
+	conf.Output = []string{"human", "json"}
 	conf.Dimension = []Dimension{
 		{1, "XSmall", 1000, 2},
-		{2, "Small", 1500, 4},
-		{3, "Medium", 2500, 8},
-		{4, "Large", 4500, 16},
+		{2, "Small", 2500, 4},
+		{3, "Medium", 4500, 8},
+		{4, "Large", 6500, 16},
 		{5, "XLarge", 8500, 32},
 	}
 
@@ -73,6 +152,9 @@ func (conf *Configuration) Init() {
 
 func (family *Family) Init() map[string]Family {
 
+	// supported parameters are defined here with defaults value and ranges.
+	// to add new we can add here the new one then create a proper method to handle the calculation
+
 	connectionGroup := map[string]Parameter{
 		"binlog_cache_size":      {"binlog_cache_size", "configuration", "connection", "32768", "32768", 32768, 0},
 		"binlog_stmt_cache_size": {"binlog_stmt_cache_size", "configuration", "connection", "32768", "32768", 32768, 0},
@@ -84,6 +166,7 @@ func (family *Family) Init() map[string]Family {
 	}
 
 	serverGroup := map[string]Parameter{
+		"max_connections":             {"max_connections", "configuration", "server", "50", "2", 2, 65536},
 		"thread_pool_size":            {"thread_pool_size", "configuration", "server", "2", "2", 2, 64},
 		"table_definition_cache":      {"table_definition_cache", "configuration", "server", "4096", "4096", 400, 524288},
 		"table_open_cache":            {"table_open_cache", "configuration", "server", "4096", "4096", 400, 524288},
@@ -103,13 +186,14 @@ func (family *Family) Init() map[string]Family {
 		"innodb_page_cleaners":           {"innodb_page_cleaners", "configuration", "innodb", "1", "4", 1, 64},
 		"innodb_purge_threads":           {"innodb_purge_threads", "configuration", "innodb", "1", "4", 1, 32},
 		"innodb_io_capacity_max":         {"innodb_io_capacity_max", "configuration", "innodb", "1000", "1400", 100, 0},
+		"innodb_buffer_pool_chunk_size":  {"innodb_buffer_pool_chunk_size", "configuration", "innodb", "2097152", "134217728", 1048576, 0},
 	}
 
 	wsrepGroup := map[string]Parameter{
 		"wsrep_sync_wait":         {"wsrep_sync_wait", "configuration", "galera", "0", "0", 0, 8},
 		"wsrep_slave_threads":     {"wsrep_slave_threads", "configuration", "galera", "2", "1", 1, 0},
 		"wsrep_trx_fragment_size": {"wsrep_trx_fragment_size", "configuration", "galera", "1048576", "0", 0, 0},
-		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "1048576", "0", 0, 0},
+		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "bytes", "bytes", -1, -1},
 		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0},
 	}
 
@@ -141,8 +225,68 @@ func (family *Family) Init() map[string]Family {
 	pxcGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
 	pxcGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
 
-	families := map[string]Family{"pxc": {"pxc", pxcGroups}, "haproxy": {"haproxy", haproxyGroups}}
+	families := map[string]Family{"mysql": {"pxc", pxcGroups}, "proxy": {"haproxy", haproxyGroups}}
 
 	return families
 
+}
+
+type ProviderParam struct {
+	Name     string
+	Literal  string
+	Value    int64
+	Defvalue int64
+	RMin     int64
+	RMax     int64
+}
+
+func (pP *ProviderParam) Init() map[string]ProviderParam {
+
+	pMap := map[string]ProviderParam{
+		"pc.recovery":               {"pc.recovery", "true", -1, 0, 0, 0},
+		"gcache.size":               {"gcache.size", "%s", 0, 0, 0, 0},
+		"gcache.recover":            {"gcache.recover", "yes", -1, 0, 0, 0},
+		"evs.delayed_keep_period":   {"evs.delayed_keep_period", "PT5%sS", 0, 30, 30, 60},
+		"evs.delay_margin":          {"evs.delay_margin", "PT%sS", 0, 1, 1, 30},
+		"evs.send_window":           {"evs.send_window", "PT%sS", 0, 4, 4, 1024},
+		"evs.user_send_window":      {"evs.user_send_window", "PT%sS", 0, 2, 2, 1024},
+		"evs.inactive_check_period": {"evs.inactive_check_period", "PT%sS", 0, 1, 1, 5},
+		"evs.inactive_timeout":      {"evs.inactive_timeout", "PT%sS", 0, 15, 15, 120},
+		"evs.join_retrans_period":   {"evs.join_retrans_period", "PT%sS", 0, 1, 1, 5},
+		"evs.suspect_timeout":       {"evs.suspect_timeout", "PT%sS", 0, 5, 5, 60},
+		"evs.stats_report_period":   {"evs.stats_report_period", "PT%sM", 0, 1, 1, 1},
+		"gcs.fc_limit":              {"gcs.fc_limit", "PT%sS", 0, 16, 16, 128},
+		"gcs.max_packet_size":       {"gcs.max_packet_size", "%s", 0, 32616, 32616, 131072},
+		"gmcast.peer_timeout":       {"gmcast.peer_timeout", "PT%sS", 0, 3, 3, 15},
+		"gmcast.time_wait":          {"gmcast.time_wait", "PT%sS", 0, 5, 5, 18},
+		"evs.max_install_timeouts":  {"evs.max_install_timeouts", "%s", 0, 1, 1, 5},
+		"pc.announce_timeout":       {"pc.announce_timeout", "PT%sS", 0, 3, 3, 60},
+		"pc.linger":                 {"pc.linger", "PT%sS", 0, 2, 2, 60},
+	}
+	//		"gcs.fc_factor":             {"gcs.fc_factor", "%s", 0, 0.5, 0.5, 0.9},
+
+	return pMap
+}
+
+func (f Family) ParseGroupsHuman() bytes.Buffer {
+	var b bytes.Buffer
+
+	b.WriteString("[" + f.Name + "]" + "\n")
+	for key, group := range f.Groups {
+		b.WriteString("    [" + key + "]" + "\n")
+		pb := f.parseParamsHuman(group)
+		b.Write(pb.Bytes())
+	}
+
+	return b
+
+}
+
+func (f Family) parseParamsHuman(group GroupObj) bytes.Buffer {
+	var b bytes.Buffer
+	for key, param := range group.Parameters {
+		b.WriteString("      " + key + " = " + param.Value + "\n")
+	}
+
+	return b
 }
