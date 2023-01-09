@@ -48,10 +48,16 @@ type ConfigurationRequest struct {
 
 // used to represent the POD dimension
 type Dimension struct {
-	Id     int    `json:"id"`
-	Name   string `json:"name"`
-	Cpu    int    `json:"cpu"`
-	Memory int64  `json:"memory"`
+	Id          int     `json:"id"`
+	Name        string  `json:"name"`
+	Cpu         int     `json:"cpu"`
+	Memory      float64 `json:"memory"`
+	MysqlCpu    int     `json:"mysqlCpu"`
+	ProxyCpu    int     `json:"proxyCpu"`
+	PmmCpu      int     `json:"pmmCpu"`
+	MysqlMemory float64 `json:"mysqlMemory"`
+	ProxyMemory float64 `json:"proxyMemory"`
+	PmmMemory   float64 `json:"pmmMemory"`
 }
 
 // The different kind of load type
@@ -92,7 +98,7 @@ func (conf *Configuration) GetDimensionByID(id int) Dimension {
 		}
 
 	}
-	return Dimension{0, "", 0, 0}
+	return Dimension{0, "", 0, 0, 0, 0, 0, 0, 0, 0}
 }
 
 // returns the Load Type using ID attribute
@@ -127,11 +133,16 @@ func (conf *Configuration) Init() {
 	conf.DBType = []string{"group_replication", "pxc"}
 	conf.Output = []string{"human", "json"}
 	conf.Dimension = []Dimension{
-		{1, "XSmall", 1000, 2},
-		{2, "Small", 2500, 4},
-		{3, "Medium", 4500, 8},
-		{4, "Large", 6500, 16},
-		{5, "XLarge", 8500, 32},
+		{1, "XSmall", 1000, 2, 600, 200, 100, 1.7, 0.200, 0.100},
+		{2, "Small", 2500, 4, 2000, 350, 150, 3.5, 0.400, 0.100},
+		{3, "Medium", 4500, 8, 3800, 500, 200, 7, 0.700, 0.300},
+		{4, "Large", 6500, 16, 5500, 700, 300, 14, 1.5, 0.500},
+		{5, "2XLarge", 8500, 32, 7400, 800, 300, 30, 1.5, 0.500},
+		{6, "4XLarge", 16000, 64, 14000, 1500, 500, 62, 1.5, 0.500},
+		{7, "8XLarge", 32000, 128, 29000, 2000, 1000, 126, 1.5, 0.500},
+		{8, "12XLarge", 48000, 192, 45000, 2000, 1000, 190, 1.5, 0.500},
+		{9, "16XLarge", 64000, 256, 60000, 3000, 1000, 253, 2, 1},
+		{9, "24XLarge", 96000, 384, 90000, 4000, 2000, 380, 2.5, 1.5},
 	}
 
 	conf.LoadType = []LoadType{}

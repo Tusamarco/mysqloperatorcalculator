@@ -18,7 +18,7 @@ type Configurator struct {
 
 // This structure is used to keep information that is needed while calculating the parameters
 type references struct {
-	memory             int64   //total memory available
+	memory             float64 //total memory available
 	cpus               int     //total cpus
 	gcache             int64   // assigned gcache dimension
 	gcacheFootprint    int64   // expected file footprint in memory
@@ -35,10 +35,10 @@ type references struct {
 	tmpTableFootprint  int64   // tempTable expected footprint in memory
 	connBuffersMemTot  int64   // Total mem use for all connection buffers + temp table
 	idealBufferPoolDIm int64   // Theoretical ideal BP dimension (rule of the thumb)
-	innoDBBPInstances  int     //  assignied number of BP
+	innoDBBPInstances  int     //  assigned number of BP
 }
 
-// return all provider option considered as single string for the parameter value
+// GetAllGaleraProviderOptionsAsString return all provider option considered as single string for the parameter value
 func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 
 	var b bytes.Buffer
@@ -96,7 +96,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	}
 	c.reference.loadAdjustmentMax = dim.Cpu / 50
 	c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
-	c.reference.loadFactor = (1 - c.reference.loadAdjustment)
+	c.reference.loadFactor = 1 - c.reference.loadAdjustment
 	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memory) * 0.65)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
@@ -127,7 +127,7 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	c.getConnectionBuffers()
 
 	// let us do a simple check to see if the number of connections is consuming too many resources.
-	conWeight := float64(c.reference.connBuffersMemTot) / float64(c.reference.memory)
+	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memory
 	if conWeight < 0.40 {
 
 		// Innodb Redolog
@@ -137,7 +137,7 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 		c.getGcache()
 
 		// Innodb BP and Params
-		c.getInnodbParmameters()
+		c.getInnodbParameters()
 
 		// set Server params
 		c.getServerParameters()
@@ -162,17 +162,17 @@ func (c *Configurator) getGcache() {
 }
 
 func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
-	impedence := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
+	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
 
 	switch c.reference.loadID {
 	case 1:
-		return impedence
+		return impedance
 	case 2:
-		return impedence
+		return impedance
 	case 3:
-		return impedence
+		return impedance
 	case 4:
-		return impedence
+		return impedance
 	default:
 		return float32(c.reference.loadAdjustmentMax / 1)
 
@@ -298,15 +298,15 @@ func (c *Configurator) sumConnectionBuffers(params map[string]o.Parameter) {
 		}
 	}
 
-	//once we have the total buffer allocation we calculate the total estiamtion of the temp table based on the load factor to adjust the connection load
-	possibleconnectionTmp := float64(c.reference.connections) * float64(c.reference.loadFactor)
-	possibleTmpMempressure := int64(math.Floor(possibleconnectionTmp)) * c.reference.tmpTableFootprint
+	//once we have the total buffer allocation we calculate the total estimation of the temp table based on the load factor to adjust the connection load
+	possibleConnectionTmp := float64(c.reference.connections) * float64(c.reference.loadFactor)
+	possibleTmpMemPressure := int64(math.Floor(possibleConnectionTmp)) * c.reference.tmpTableFootprint
 
-	c.reference.connBuffersMemTot = totMemory * int64(possibleconnectionTmp)
-	c.reference.connBuffersMemTot += possibleTmpMempressure
+	c.reference.connBuffersMemTot = totMemory * int64(possibleConnectionTmp)
+	c.reference.connBuffersMemTot += possibleTmpMemPressure
 
 	//update available memory in the references
-	c.reference.memoryLeftover = (c.reference.memory - c.reference.connBuffersMemTot)
+	c.reference.memoryLeftover = int64(c.reference.memory) - c.reference.connBuffersMemTot
 	//log.Debug(fmt.Sprintf("Total memory: %d ;  connections memory : %d ; memory leftover: %d", c.reference.memory, c.reference.connBuffersMemTot, c.reference.memoryLeftover))
 }
 
@@ -403,13 +403,13 @@ func (c *Configurator) getGcacheLoad() float64 {
 	}
 }
 
-func (c *Configurator) getInnodbParmameters() {
+func (c *Configurator) getInnodbParameters() {
 	group := c.families["mysql"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
 	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
 	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
-	group.Parameters["innodb_purge_threads"] = c.paramInnoDBpurgeThreads(group.Parameters["innodb_purge_threads"])
+	group.Parameters["innodb_purge_threads"] = c.paramInnoDPurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
 
 	c.families["mysql"].Groups["configuration_innodb"] = group
@@ -430,8 +430,6 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Par
 		parameter.Value = "True"
 		return parameter
 	}
-
-	return parameter
 
 }
 
@@ -480,11 +478,11 @@ func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter o.Parameter) o.Pa
 
 // purge threads should be set on the base of the table involved in parallel DML, here we assume that a load with intense OLTP has more parallel tables involved than the others
 // the g cache load factor is the one use to tune
-func (c *Configurator) paramInnoDBpurgeThreads(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDPurgeThreads(parameter o.Parameter) o.Parameter {
 
 	threads := 4
 	if (c.reference.cpus / 1000) > 4 {
-		valore := float64(c.reference.cpus/1000) * float64(c.reference.gcacheLoad)
+		valore := float64(c.reference.cpus/1000) * c.reference.gcacheLoad
 		threads = int(math.Ceil(valore))
 	}
 
@@ -516,8 +514,6 @@ func (c *Configurator) paramInnoDBIOCapacityMax(parameter o.Parameter) o.Paramet
 		return parameter
 	}
 
-	return parameter
-
 }
 
 func (c *Configurator) getServerParameters() {
@@ -528,7 +524,7 @@ func (c *Configurator) getServerParameters() {
 	group.Parameters["table_definition_cache"] = c.paramServerTableDefinitionCache(group.Parameters["table_definition_cache"])
 	group.Parameters["table_open_cache"] = c.paramServerTableOpenCache(group.Parameters["table_open_cache"])
 	group.Parameters["thread_stack"] = c.paramServerThreadStack(group.Parameters["thread_stack"])
-	group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstaces(group.Parameters["table_open_cache_instances"])
+	group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstances(group.Parameters["table_open_cache_instances"])
 
 	c.families["mysql"].Groups["configuration_server"] = group
 
@@ -543,7 +539,7 @@ func (c *Configurator) paramServerMaxConnections(parameter o.Parameter) o.Parame
 
 }
 
-// about thread pool the default is the number of CPU but we will try to push a bit more doubling them but never going over the double of the dimension threads
+// about thread pool the default is the number of CPU, but we will try to push a bit more doubling them but never going over the double of the dimension threads
 func (c *Configurator) paramServerThreadPool(parameter o.Parameter) o.Parameter {
 	threads := 4
 	cpus := c.reference.cpus / 1000
@@ -576,8 +572,8 @@ func (c *Configurator) paramServerThreadStack(parameter o.Parameter) o.Parameter
 	return parameter
 }
 
-// default is 16 but we have seen that this value is crazy high and create memory overload and a lot of fragmentation Advisor to tune)
-func (c *Configurator) paramServerTableOpenCacheInstaces(parameter o.Parameter) o.Parameter {
+// default is 16, but we have seen that this value is crazy high and create memory overload and a lot of fragmentation Advisor to tune
+func (c *Configurator) paramServerTableOpenCacheInstances(parameter o.Parameter) o.Parameter {
 	parameter.Value = strconv.Itoa(4)
 	return parameter
 }
@@ -586,7 +582,7 @@ func (c *Configurator) getGaleraProvider(inParameter o.Parameter) o.Parameter {
 	for key, param := range c.providerParams {
 		if param.Value >= 0 {
 			if key != "evs.stats_report_period" {
-				param.Value = int64((float32(param.RMax) * c.reference.loadFactor))
+				param.Value = int64(float32(param.RMax) * c.reference.loadFactor)
 			} else {
 				param.Value = 1
 			}
@@ -683,7 +679,7 @@ func (c *Configurator) setResources(group o.GroupObj) o.GroupObj {
 	group.Parameters["request_memory"] = parameter
 
 	parameter = group.Parameters["limit_memory"]
-	parameter.Value = strconv.FormatInt(c.reference.memory, 10)
+	parameter.Value = strconv.FormatFloat(c.reference.memory, 'f', 0, 64)
 	group.Parameters["limit_memory"] = parameter
 
 	parameter = group.Parameters["request_cpu"]
@@ -697,33 +693,33 @@ func (c *Configurator) setResources(group o.GroupObj) o.GroupObj {
 	return group
 }
 
-// here we give a basic check about the resources and if is over we just set the message as overload and remove the families details
+// EvaluateResources here we give a basic check about the resources and if is over we just set the message as overload and remove the families details
 func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.ResponseMessage, bool) {
 	totMeme := c.reference.memory
 	reqConnections := c.reference.connections
 	reqCpu := c.reference.cpus
 
-	gcachefootprint := c.reference.gcacheFootprint
+	gcacheFootPrint := c.reference.gcacheFootprint
 	temTableFootprint := c.reference.tmpTableFootprint
 	connectionMem := c.reference.connBuffersMemTot
-	memleftover := c.reference.memoryLeftover
+	memLeftOver := c.reference.memoryLeftover
 
 	var b bytes.Buffer
-	b.WriteString("\n\nTot Memory      = " + strconv.FormatInt(totMeme, 10) + "\n")
+	b.WriteString("\n\nTot Memory      = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
 	b.WriteString("Tot CPU         = " + strconv.Itoa(reqCpu) + "\n")
 	b.WriteString("Tot Connections = " + strconv.Itoa(reqConnections) + "\n")
 	b.WriteString("\n")
 	b.WriteString("Gcache mem on disk      = " + strconv.FormatInt(c.reference.gcache, 10) + "\n")
-	b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcachefootprint, 10) + "\n")
+	b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcacheFootPrint, 10) + "\n")
 	b.WriteString("\n")
 	b.WriteString("Tmp Table mem Footprint = " + strconv.FormatInt(temTableFootprint, 10) + "\n")
 	b.WriteString("By connection mem tot   = " + strconv.FormatInt(connectionMem, 10) + "\n")
 	b.WriteString("\n")
 	b.WriteString("Innodb Bufferpool       = " + strconv.FormatInt(c.reference.innoDBbpSize, 10) + "\n")
-	bpPct := float64(c.reference.innoDBbpSize) / float64(totMeme)
+	bpPct := float64(c.reference.innoDBbpSize) / totMeme
 	b.WriteString("% BP over av memory     = " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
 	b.WriteString("\n")
-	b.WriteString("memory leftover         = " + strconv.FormatInt(memleftover, 10) + "\n")
+	b.WriteString("memory leftover         = " + strconv.FormatInt(memLeftOver, 10) + "\n")
 
 	return fillResponseMessage(bpPct, responseMsg, b)
 
