@@ -7,28 +7,28 @@ import (
 //***********************************
 // Constants
 //***********************************
-const OK_I = 1001
-const CLOSETOLIMIT_I = 2001
-const OVERUTILIZING_I = 3001
-const ERROREXEC_I = 5001
+const OkI = 1001
+const ClosetolimitI = 2001
+const OverutilizingI = 3001
+const ErrorexecI = 5001
 
-const OK_T = "Execution was successful and resources match the possible requests"
-const CLOSETOLIMIT_T = "Execution was successful however resources are close to saturation based on the load requested"
-const OVERUTILIZING_T = "Resources not enough to cover the requested load "
-const ERROREXEC_T = "There is an error while processing. See details: %s"
+const OkT = "Execution was successful and resources match the possible requests"
+const ClosetolimitT = "Execution was successful however resources are close to saturation based on the load requested"
+const OverutilizingT = "Resources not enough to cover the requested load "
+const ErrorexecT = "There is an error while processing. See details: %s"
 
 //*********************************
 // Structure definitions
 //********************************
 
-//Message is the retruned message
+// ResponseMessage Message is the retruned message
 type ResponseMessage struct {
 	MType int    `json:"type"`
 	MName string `json:"name"`
 	MText string `json:"text"`
 }
 
-// used to pass available configurations
+// Configuration used to pass available configurations
 type Configuration struct {
 	DBType      []string    `json:"dbtype"`
 	Dimension   []Dimension `json:"dimension"`
@@ -37,7 +37,7 @@ type Configuration struct {
 	Output      []string    `json:"output"`
 }
 
-// used to store the incoming request
+// ConfigurationRequest used to store the incoming request
 type ConfigurationRequest struct {
 	DBType      string    `json:"dbtype"`
 	Dimension   Dimension `json:"dimension"`
@@ -46,22 +46,28 @@ type ConfigurationRequest struct {
 	Output      string    `json:"output"`
 }
 
-// used to represent the POD dimension
+// Dimension used to represent the POD dimension
 type Dimension struct {
-	Id     int    `json:"id"`
-	Name   string `json:"name"`
-	Cpu    int    `json:"cpu"`
-	Memory int64  `json:"memory"`
+	Id          int     `json:"id"`
+	Name        string  `json:"name"`
+	Cpu         int     `json:"cpu"`
+	Memory      float64 `json:"memory"`
+	MysqlCpu    int     `json:"mysqlCpu"`
+	ProxyCpu    int     `json:"proxyCpu"`
+	PmmCpu      int     `json:"pmmCpu"`
+	MysqlMemory float64 `json:"mysqlMemory"`
+	ProxyMemory float64 `json:"proxyMemory"`
+	PmmMemory   float64 `json:"pmmMemory"`
 }
 
-// The different kind of load type
+// LoadType The different kind of load type
 type LoadType struct {
 	Id      int    `json:"id"`
 	Name    string `json:"name"`
 	Example string `json:"example"`
 }
 
-// generic structure to store Parameters values
+// Parameter generic structure to store Parameters values
 type Parameter struct {
 	Name    string `yaml:"name" json:"name"`
 	Section string `yaml:"section" json:"section"`
@@ -72,19 +78,19 @@ type Parameter struct {
 	Max     int    `yaml:"max" json:"max"`
 }
 
-// Parameters are groupped by typology
+// GroupObj Parameters are groupped by typology
 type GroupObj struct {
 	Name       string               `yaml:"name" json:"name"`
 	Parameters map[string]Parameter `yaml:"parameters" json:"parameters"`
 }
 
-// Groups are organized by Families
+// Family Groups are organized by Families
 type Family struct {
 	Name   string              `yaml:"name" json:"name"`
 	Groups map[string]GroupObj `yaml:"groups" json:"groups"`
 }
 
-// returns the Dimension using ID attribute
+// GetDimensionByID returns the Dimension using ID attribute
 func (conf *Configuration) GetDimensionByID(id int) Dimension {
 	for i := 0; i < len(conf.Dimension); i++ {
 		if conf.Dimension[i].Id == id {
@@ -92,10 +98,10 @@ func (conf *Configuration) GetDimensionByID(id int) Dimension {
 		}
 
 	}
-	return Dimension{0, "", 0, 0}
+	return Dimension{0, "", 0, 0, 0, 0, 0, 0, 0, 0}
 }
 
-// returns the Load Type using ID attribute
+// GetLoadByID returns the Load Type using ID attribute
 func (conf *Configuration) GetLoadByID(id int) LoadType {
 	for i := 0; i < len(conf.LoadType); i++ {
 		if conf.LoadType[i].Id == id {
@@ -109,29 +115,34 @@ func (conf *Configuration) GetLoadByID(id int) LoadType {
 
 func (respM *ResponseMessage) GetMessageText(id int) string {
 	switch id {
-	case OK_I:
-		return OK_T
-	case CLOSETOLIMIT_I:
-		return CLOSETOLIMIT_T
-	case OVERUTILIZING_I:
-		return OVERUTILIZING_T
-	case ERROREXEC_I:
-		return ERROREXEC_T
+	case OkI:
+		return OkT
+	case ClosetolimitI:
+		return ClosetolimitT
+	case OverutilizingI:
+		return OverutilizingT
+	case ErrorexecI:
+		return ErrorexecT
 	}
 	return "Unhandled message ID"
 }
 
-// here is where we define the different options
+// Init here is where we define the different options
 // it will be possible to increment the supported solutions adding here the items
 func (conf *Configuration) Init() {
 	conf.DBType = []string{"group_replication", "pxc"}
 	conf.Output = []string{"human", "json"}
 	conf.Dimension = []Dimension{
-		{1, "XSmall", 1000, 2},
-		{2, "Small", 2500, 4},
-		{3, "Medium", 4500, 8},
-		{4, "Large", 6500, 16},
-		{5, "XLarge", 8500, 32},
+		{1, "XSmall", 1000, 2, 600, 200, 100, 1.7, 0.200, 0.100},
+		{2, "Small", 2500, 4, 2000, 350, 150, 3.5, 0.400, 0.100},
+		{3, "Medium", 4500, 8, 3800, 500, 200, 7, 0.700, 0.300},
+		{4, "Large", 6500, 16, 5500, 700, 300, 14, 1.5, 0.500},
+		{5, "2XLarge", 8500, 32, 7400, 800, 300, 30, 1.5, 0.500},
+		{6, "4XLarge", 16000, 64, 14000, 1500, 500, 62, 1.5, 0.500},
+		{7, "8XLarge", 32000, 128, 29000, 2000, 1000, 126, 1.5, 0.500},
+		{8, "12XLarge", 48000, 192, 45000, 2000, 1000, 190, 1.5, 0.500},
+		{9, "16XLarge", 64000, 256, 60000, 3000, 1000, 253, 2, 1},
+		{9, "24XLarge", 96000, 384, 90000, 4000, 2000, 380, 2.5, 1.5},
 	}
 
 	conf.LoadType = []LoadType{}
@@ -197,7 +208,7 @@ func (family *Family) Init() map[string]Family {
 		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0},
 	}
 
-	pxcGroups := map[string]GroupObj{
+	mysqlGroups := map[string]GroupObj{
 		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "15", "15", 15, 600}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 600}}},
 		"resources": {"resources", map[string]Parameter{
@@ -220,12 +231,23 @@ func (family *Family) Init() map[string]Family {
 		}},
 	}
 
-	pxcGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
-	pxcGroups["configuration_server"] = GroupObj{"server", serverGroup}
-	pxcGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
-	pxcGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+	pmmGroups := map[string]GroupObj{
+		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30}}},
+		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60}}},
+		"resources": {"resources", map[string]Parameter{
+			"request_memory": {"memory", "request", "resources", "1", "1", 1, 2},
+			"request_cpu":    {"cpu", "request", "resources", "1000", "1000", 100, 2000},
+			"limit_memory":   {"memory", "limit", "resources", "1", "!", 1, 2},
+			"limit_cpu":      {"cpu", "limit", "resources", "1000", "1000", 100, 2000},
+		}},
+	}
 
-	families := map[string]Family{"mysql": {"pxc", pxcGroups}, "proxy": {"haproxy", haproxyGroups}}
+	mysqlGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
+	mysqlGroups["configuration_server"] = GroupObj{"server", serverGroup}
+	mysqlGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
+	mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+
+	families := map[string]Family{"mysql": {"pxc", mysqlGroups}, "proxy": {"haproxy", haproxyGroups}, "monitor": {"pmm", pmmGroups}}
 
 	return families
 
