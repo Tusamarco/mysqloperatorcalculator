@@ -72,6 +72,11 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	if load.Id == 0 || dim.Id == 0 {
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))
 	}
+	connections := r.Connections
+	if connections < 50 {
+		connections = 50
+	}
+
 	ref := references{
 		((dim.Memory * 1024) * 1024) * 1024, // convert to bytes
 		dim.Cpu,
@@ -86,7 +91,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 		0,
 		load.Id,
 		dim.Id,
-		r.Connections,
+		connections,
 		0,
 		0,
 		0,
