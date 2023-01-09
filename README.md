@@ -674,7 +674,7 @@ Your (long) output will look like this:
 ```
 #### Message
 The first section you will see is `message`
-```
+```json
 "message":{
   "type": 2001,
   "name": "Execution was successful however resources are close to saturation based on the load requested",
@@ -688,7 +688,7 @@ In this last case toy __will not__ have the other sections.
 #### Incoming
 The incoming section is a summary of the request you have sent.
 I put it in so you can validate that what the tools is processing is what you have ask for:
-```
+```json
 "incoming":{
   "dbtype": "pxc",
   "dimension": {
@@ -720,7 +720,42 @@ it is diveded in three __families__:
 - mysql
 - proxy 
 
-Each family has a variable number of __Groups__, and each Group has multiple __Parameters_ in.
+Each family has a variable number of __Groups__, and each Group has multiple __Parameters__ in.
+To understand better in the MySQL family we will have a group named __configuration_connection__ which will contains all the Parameters relative to "per connection" buffers such as: sort_buffer_size, join_buffer_size and so on  
+  
+Each parameter has this structure:
+```json
+          "innodb_buffer_pool_chunk_size": {
+            "name": "innodb_buffer_pool_chunk_size",
+            "section": "configuration",
+            "group": "innodb",
+            "value": "2097152",
+            "default": "134217728",
+            "min": 1048576,
+            "max": 0
+          }    
+```
+It is quite self explanatory, but let us review it:
+- name : is the variable name
+- section : the name of the section (for future use)
+- group : the group to who it belongs, in this case InnoDB configuration
+- value : __THIS IS__ what you are interested in. This is the value you should take for your prcessing.
+- default/min/max : are used for calculation and reference.
+  
+### livenessProbe / readinessProbe / resources
+These three Groups are __EXTREMELY__ important.
+The values for the __probes__, are calculated to help you to prevent Kubernetes to kill a perfectly working but busy Pod.
+You must use them and be sure they are correctly set in your CR or all the work done will be useless. 
+  
+Resources are the cpu/memory dimension you should set. You will always have a LIMIT and a REQUEST for the resources. Keep in mind that whatever will push your pod above the memory limit will IMMEDIATELY trigger the OOM killer :) not a nice thing to have. 
+  
+# Final... 
+The toool is there and it needs testing and real evaluation, so I reccomand you to test, test, test whatever configuration you will get. 
+Notihing is perfect, so let me know if you find things that make no sense or not workign as expected. 
+  
+Last thing ... 
+you can use:
+  --version to get the version  
+  --help to get basic help at command line
 
-
-
+Thank you   
