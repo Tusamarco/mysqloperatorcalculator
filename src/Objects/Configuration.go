@@ -7,28 +7,28 @@ import (
 //***********************************
 // Constants
 //***********************************
-const OK_I = 1001
-const CLOSETOLIMIT_I = 2001
-const OVERUTILIZING_I = 3001
-const ERROREXEC_I = 5001
+const OkI = 1001
+const ClosetolimitI = 2001
+const OverutilizingI = 3001
+const ErrorexecI = 5001
 
-const OK_T = "Execution was successful and resources match the possible requests"
-const CLOSETOLIMIT_T = "Execution was successful however resources are close to saturation based on the load requested"
-const OVERUTILIZING_T = "Resources not enough to cover the requested load "
-const ERROREXEC_T = "There is an error while processing. See details: %s"
+const OkT = "Execution was successful and resources match the possible requests"
+const ClosetolimitT = "Execution was successful however resources are close to saturation based on the load requested"
+const OverutilizingT = "Resources not enough to cover the requested load "
+const ErrorexecT = "There is an error while processing. See details: %s"
 
 //*********************************
 // Structure definitions
 //********************************
 
-//Message is the retruned message
+// ResponseMessage Message is the retruned message
 type ResponseMessage struct {
 	MType int    `json:"type"`
 	MName string `json:"name"`
 	MText string `json:"text"`
 }
 
-// used to pass available configurations
+// Configuration used to pass available configurations
 type Configuration struct {
 	DBType      []string    `json:"dbtype"`
 	Dimension   []Dimension `json:"dimension"`
@@ -37,7 +37,7 @@ type Configuration struct {
 	Output      []string    `json:"output"`
 }
 
-// used to store the incoming request
+// ConfigurationRequest used to store the incoming request
 type ConfigurationRequest struct {
 	DBType      string    `json:"dbtype"`
 	Dimension   Dimension `json:"dimension"`
@@ -46,7 +46,7 @@ type ConfigurationRequest struct {
 	Output      string    `json:"output"`
 }
 
-// used to represent the POD dimension
+// Dimension used to represent the POD dimension
 type Dimension struct {
 	Id          int     `json:"id"`
 	Name        string  `json:"name"`
@@ -60,14 +60,14 @@ type Dimension struct {
 	PmmMemory   float64 `json:"pmmMemory"`
 }
 
-// The different kind of load type
+// LoadType The different kind of load type
 type LoadType struct {
 	Id      int    `json:"id"`
 	Name    string `json:"name"`
 	Example string `json:"example"`
 }
 
-// generic structure to store Parameters values
+// Parameter generic structure to store Parameters values
 type Parameter struct {
 	Name    string `yaml:"name" json:"name"`
 	Section string `yaml:"section" json:"section"`
@@ -78,19 +78,19 @@ type Parameter struct {
 	Max     int    `yaml:"max" json:"max"`
 }
 
-// Parameters are groupped by typology
+// GroupObj Parameters are groupped by typology
 type GroupObj struct {
 	Name       string               `yaml:"name" json:"name"`
 	Parameters map[string]Parameter `yaml:"parameters" json:"parameters"`
 }
 
-// Groups are organized by Families
+// Family Groups are organized by Families
 type Family struct {
 	Name   string              `yaml:"name" json:"name"`
 	Groups map[string]GroupObj `yaml:"groups" json:"groups"`
 }
 
-// returns the Dimension using ID attribute
+// GetDimensionByID returns the Dimension using ID attribute
 func (conf *Configuration) GetDimensionByID(id int) Dimension {
 	for i := 0; i < len(conf.Dimension); i++ {
 		if conf.Dimension[i].Id == id {
@@ -101,7 +101,7 @@ func (conf *Configuration) GetDimensionByID(id int) Dimension {
 	return Dimension{0, "", 0, 0, 0, 0, 0, 0, 0, 0}
 }
 
-// returns the Load Type using ID attribute
+// GetLoadByID returns the Load Type using ID attribute
 func (conf *Configuration) GetLoadByID(id int) LoadType {
 	for i := 0; i < len(conf.LoadType); i++ {
 		if conf.LoadType[i].Id == id {
@@ -115,19 +115,19 @@ func (conf *Configuration) GetLoadByID(id int) LoadType {
 
 func (respM *ResponseMessage) GetMessageText(id int) string {
 	switch id {
-	case OK_I:
-		return OK_T
-	case CLOSETOLIMIT_I:
-		return CLOSETOLIMIT_T
-	case OVERUTILIZING_I:
-		return OVERUTILIZING_T
-	case ERROREXEC_I:
-		return ERROREXEC_T
+	case OkI:
+		return OkT
+	case ClosetolimitI:
+		return ClosetolimitT
+	case OverutilizingI:
+		return OverutilizingT
+	case ErrorexecI:
+		return ErrorexecT
 	}
 	return "Unhandled message ID"
 }
 
-// here is where we define the different options
+// Init here is where we define the different options
 // it will be possible to increment the supported solutions adding here the items
 func (conf *Configuration) Init() {
 	conf.DBType = []string{"group_replication", "pxc"}

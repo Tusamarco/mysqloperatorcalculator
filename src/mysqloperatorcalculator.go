@@ -6,10 +6,10 @@ import (
 	"flag"
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"mysqloperatorcalculator/src/Global"
+	"mysqloperatorcalculator/src/Objects"
 	"net/http"
 	"os"
-	"pxccalculator/src/Global"
-	"pxccalculator/src/Objects"
 	"strconv"
 )
 
@@ -238,7 +238,7 @@ func exitWithCode(errorCode int) {
 }
 
 func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfRequest *Objects.ConfigurationRequest, message Objects.ResponseMessage, families map[string]Objects.Family, errorMessage string) error {
-	message.MType = Objects.ERROREXEC_I
+	message.MType = Objects.ErrorexecI
 	message.MName = "Invalid incoming request"
 	message.MText = fmt.Sprintf(message.GetMessageText(message.MType), errorMessage)
 	err := ReturnResponse(writer, request, ConfRequest, message, families)

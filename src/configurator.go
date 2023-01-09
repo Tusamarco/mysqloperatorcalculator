@@ -5,7 +5,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"math"
-	o "pxccalculator/src/Objects"
+	o "mysqloperatorcalculator/src/Objects"
 	"strconv"
 )
 
@@ -91,7 +91,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	// set load factors based on the incoming request
 	loadConnectionFactor := float32(dim.Cpu) / float32(c.reference.connections)
 	if loadConnectionFactor < 1 {
-		message.MType = o.OVERUTILIZING_I
+		message.MType = o.OverutilizingI
 		return message, true
 	}
 	c.reference.loadAdjustmentMax = dim.Cpu / 50
@@ -728,16 +728,16 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.Respo
 func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) (o.ResponseMessage, bool) {
 	overUtilizing := false
 	if pct < 0.50 {
-		msg.MType = o.OVERUTILIZING_I
+		msg.MType = o.OverutilizingI
 		msg.MText = "Request cancelled not enough resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 		overUtilizing = true
 	} else if pct > 0.50 && pct <= 0.65 {
-		msg.MType = o.CLOSETOLIMIT_I
+		msg.MType = o.ClosetolimitI
 		msg.MText = "Request processed however not optimal details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 	} else if pct > 0.66 {
-		msg.MType = o.OK_I
+		msg.MType = o.OkI
 		msg.MText = "Request ok, resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 	}
