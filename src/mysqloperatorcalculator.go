@@ -182,7 +182,7 @@ func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfReque
 
 	if ConfRequest.Output == "json" {
 		b, err = getJSONOutput(message, ConfRequest, families)
-	} else if ConfRequest.Output == "human" {
+	} else {
 		b, err = getHumanOutput(message, ConfRequest, families)
 	}
 	if err != nil {
