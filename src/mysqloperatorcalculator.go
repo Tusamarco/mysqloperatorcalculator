@@ -22,19 +22,19 @@ import (
 func main() {
 
 	var (
-		port    int
-		ip      string
+		//port    int
+		//ip      string
 		helpB   bool
 		version bool
 		help    Global.HelpText
 	)
-	port = *flag.Int("port", 8080, "Port to serve")
-	ip = *flag.String("address", "0.0.0.0", "Ip address")
+	port := flag.Int("port", 8080, "Port to serve")
+	ip := flag.String("address", "0.0.0.0", "Ip address")
 	flag.BoolVar(&helpB, "help", false, "for help")
 	flag.BoolVar(&version, "version", false, "to get product version")
 	flag.Parse()
 
-	var versionS = "0.0.1"
+	var versionS = "1.0.0"
 	//initialize help
 
 	//just check if we need to pass version or help
@@ -51,7 +51,7 @@ func main() {
 	log.SetLevel(log.DebugLevel)
 
 	//set server address (need to come from configuration parameter)
-	server := http.Server{Addr: ip + ":" + strconv.Itoa(port)}
+	server := http.Server{Addr: *ip + ":" + strconv.Itoa(*port)}
 
 	//define API handlers
 	http.HandleFunc("/calculator", handleRequestCalculator)
