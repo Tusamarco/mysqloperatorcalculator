@@ -36,6 +36,12 @@ type references struct {
 	connBuffersMemTot  int64   // Total mem use for all connection buffers + temp table
 	idealBufferPoolDIm int64   // Theoretical ideal BP dimension (rule of the thumb)
 	innoDBBPInstances  int     //  assigned number of BP
+	cpusPmm            float64 // cpu assigned to pmm
+	cpusProxy          float64 // cpu assigned to proxy
+	cpusMySQL          float64 // cpu assigned to mysql
+	memoryMySQL        float64 // memory assigned to MySQL
+	memoryProxy        float64 // memory assigned to proxy
+	memoryPmm          float64 // memory assigned to pmm
 }
 
 // GetAllGaleraProviderOptionsAsString return all provider option considered as single string for the parameter value
@@ -84,20 +90,27 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 		0,
 		0,
 		0,
-		0}
+		0,
+		float64(dim.PmmCpu),
+		float64(dim.ProxyCpu),
+		float64(dim.MysqlCpu),
+		((dim.MysqlMemory * 1024) * 1024) * 1024,
+		((dim.ProxyMemory * 1024) * 1024) * 1024,
+		((dim.PmmMemory * 1024) * 1024) * 1024,
+	}
 
 	c.reference = &ref
 
 	// set load factors based on the incoming request
-	loadConnectionFactor := float32(dim.Cpu) / float32(c.reference.connections)
+	loadConnectionFactor := float32(dim.MysqlCpu) / float32(c.reference.connections)
 	if loadConnectionFactor < 1 {
 		message.MType = o.OverutilizingI
 		return message, true
 	}
-	c.reference.loadAdjustmentMax = dim.Cpu / 50
+	c.reference.loadAdjustmentMax = dim.MysqlCpu / 50
 	c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
 	c.reference.loadFactor = 1 - c.reference.loadAdjustment
-	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memory) * 0.65)
+	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * 0.65)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
 	var p o.ProviderParam
@@ -127,7 +140,7 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 	c.getConnectionBuffers()
 
 	// let us do a simple check to see if the number of connections is consuming too many resources.
-	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memory
+	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memoryMySQL
 	if conWeight < 0.40 {
 
 		// Innodb Redolog
@@ -150,17 +163,20 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 		// Proxy
 		c.getProbesAndResources("mysql")
 		c.getProbesAndResources("proxy")
+		c.getProbesAndResources("monitor")
 	}
 	return c.families
 
 }
 
+// calculate gcache effects on memory (estimation)
 func (c *Configurator) getGcache() {
 	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
 	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
+// TODO WARNING need to add the weight here
 func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
 
@@ -178,11 +194,6 @@ func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 
 	}
 
-}
-
-func (c *Configurator) checkValidity() bool {
-
-	return false
 }
 
 //processing per connections first
@@ -306,7 +317,7 @@ func (c *Configurator) sumConnectionBuffers(params map[string]o.Parameter) {
 	c.reference.connBuffersMemTot += possibleTmpMemPressure
 
 	//update available memory in the references
-	c.reference.memoryLeftover = int64(c.reference.memory) - c.reference.connBuffersMemTot
+	c.reference.memoryLeftover = int64(c.reference.memoryMySQL) - c.reference.connBuffersMemTot
 	//log.Debug(fmt.Sprintf("Total memory: %d ;  connections memory : %d ; memory leftover: %d", c.reference.memory, c.reference.connBuffersMemTot, c.reference.memoryLeftover))
 }
 
@@ -450,7 +461,7 @@ func (c *Configurator) paramInnoDBBufferPoolInstances(parameter o.Parameter) o.P
 	instances := 1
 	if c.reference.cpus > 2000 {
 		bpSize := float64(((c.reference.innoDBbpSize / 1024) / 1024) / 1024)
-		maxCpus := float64(c.reference.cpus / 1000)
+		maxCpus := float64(c.reference.cpusMySQL / 1000)
 
 		factor := bpSize / maxCpus
 
@@ -482,7 +493,7 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter o.Parameter) o.Parameter
 
 	threads := 4
 	if (c.reference.cpus / 1000) > 4 {
-		valore := float64(c.reference.cpus/1000) * c.reference.gcacheLoad
+		valore := float64(c.reference.cpusMySQL/1000) * c.reference.gcacheLoad
 		threads = int(math.Ceil(valore))
 	}
 
@@ -542,11 +553,11 @@ func (c *Configurator) paramServerMaxConnections(parameter o.Parameter) o.Parame
 // about thread pool the default is the number of CPU, but we will try to push a bit more doubling them but never going over the double of the dimension threads
 func (c *Configurator) paramServerThreadPool(parameter o.Parameter) o.Parameter {
 	threads := 4
-	cpus := c.reference.cpus / 1000
+	cpus := c.reference.cpusMySQL / 1000
 
 	// we just set some limits to the cpu range
 	if cpus > 2 && cpus < 256 {
-		threads = cpus * 2
+		threads = int(cpus) * 2
 	}
 
 	parameter.Value = strconv.Itoa(threads)
@@ -626,7 +637,7 @@ func (c *Configurator) getGaleraSyncWait(parameter o.Parameter) o.Parameter {
 
 func (c *Configurator) getGaleraSlaveThreads(parameter o.Parameter) o.Parameter {
 
-	cpus := int(math.Floor(float64(c.reference.cpus / 1000)))
+	cpus := int(math.Floor(float64(c.reference.cpusMySQL / 1000)))
 
 	if cpus <= 1 {
 		cpus = 1
@@ -647,7 +658,8 @@ func (c *Configurator) getProbesAndResources(family string) {
 	val := 0
 
 	group := c.families[family].Groups["resources"]
-	group = c.setResources(group)
+	cpus, memory := c.getResourcesByFamily(family)
+	group = c.setResources(group, cpus, memory)
 	c.families[family].Groups["resources"] = group
 
 	// setting readiness and liveness
@@ -672,22 +684,22 @@ func (c *Configurator) getProbesAndResources(family string) {
 
 }
 
-func (c *Configurator) setResources(group o.GroupObj) o.GroupObj {
+func (c *Configurator) setResources(group o.GroupObj, cpus float64, memory float64) o.GroupObj {
 	// we set the memory request as 95% of the available memory and set Limit as 100%
 	parameter := group.Parameters["request_memory"]
-	parameter.Value = strconv.FormatFloat(float64(c.reference.memory)*0.95, 'f', 0, 64)
+	parameter.Value = strconv.FormatFloat(float64(memory)*0.95, 'f', 0, 64)
 	group.Parameters["request_memory"] = parameter
 
 	parameter = group.Parameters["limit_memory"]
-	parameter.Value = strconv.FormatFloat(c.reference.memory, 'f', 0, 64)
+	parameter.Value = strconv.FormatFloat(memory, 'f', 0, 64)
 	group.Parameters["limit_memory"] = parameter
 
 	parameter = group.Parameters["request_cpu"]
-	parameter.Value = strconv.FormatFloat(float64(c.reference.cpus)*0.95, 'f', 0, 64)
+	parameter.Value = strconv.FormatFloat(float64(cpus)*0.95, 'f', 0, 64)
 	group.Parameters["request_cpu"] = parameter
 
 	parameter = group.Parameters["limit_cpu"]
-	parameter.Value = strconv.Itoa(c.reference.cpus)
+	parameter.Value = strconv.FormatFloat(cpus, 'f', 0, 64)
 	group.Parameters["limit_cpu"] = parameter
 
 	return group
@@ -705,9 +717,16 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.Respo
 	memLeftOver := c.reference.memoryLeftover
 
 	var b bytes.Buffer
-	b.WriteString("\n\nTot Memory      = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
-	b.WriteString("Tot CPU         = " + strconv.Itoa(reqCpu) + "\n")
-	b.WriteString("Tot Connections = " + strconv.Itoa(reqConnections) + "\n")
+	b.WriteString("\n\nTot Memory          = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
+	b.WriteString("Tot CPU                 = " + strconv.Itoa(reqCpu) + "\n")
+	b.WriteString("Tot Connections         = " + strconv.Itoa(reqConnections) + "\n")
+	b.WriteString("\n")
+	b.WriteString("memory assign to mysql  = " + strconv.FormatFloat(c.reference.memoryMySQL, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to Proxy  = " + strconv.FormatFloat(c.reference.memoryProxy, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to Monitor= " + strconv.FormatFloat(c.reference.memoryPmm, 'f', 0, 64) + "\n")
+	b.WriteString("cpus assign to mysql  = " + strconv.FormatFloat(c.reference.cpusMySQL, 'f', 0, 64) + "\n")
+	b.WriteString("cpus assign to Proxy  = " + strconv.FormatFloat(c.reference.cpusProxy, 'f', 0, 64) + "\n")
+	b.WriteString("cpus assign to Monitor= " + strconv.FormatFloat(c.reference.cpusPmm, 'f', 0, 64) + "\n")
 	b.WriteString("\n")
 	b.WriteString("Gcache mem on disk      = " + strconv.FormatInt(c.reference.gcache, 10) + "\n")
 	b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcacheFootPrint, 10) + "\n")
@@ -720,9 +739,29 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.Respo
 	b.WriteString("% BP over av memory     = " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
 	b.WriteString("\n")
 	b.WriteString("memory leftover         = " + strconv.FormatInt(memLeftOver, 10) + "\n")
+	b.WriteString("\n")
 
 	return fillResponseMessage(bpPct, responseMsg, b)
 
+}
+
+func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
+	cpus := 0.0
+	memory := 0.0
+
+	switch family {
+	case "mysql":
+		cpus = c.reference.cpusMySQL
+		memory = c.reference.memoryMySQL
+	case "proxy":
+		cpus = c.reference.cpusPmm
+		memory = c.reference.memoryProxy
+	case "monitor":
+		cpus = c.reference.cpusPmm
+		memory = c.reference.memoryPmm
+	}
+
+	return cpus, memory
 }
 
 func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) (o.ResponseMessage, bool) {

@@ -208,7 +208,7 @@ func (family *Family) Init() map[string]Family {
 		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0},
 	}
 
-	pxcGroups := map[string]GroupObj{
+	mysqlGroups := map[string]GroupObj{
 		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "15", "15", 15, 600}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 600}}},
 		"resources": {"resources", map[string]Parameter{
@@ -231,12 +231,23 @@ func (family *Family) Init() map[string]Family {
 		}},
 	}
 
-	pxcGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
-	pxcGroups["configuration_server"] = GroupObj{"server", serverGroup}
-	pxcGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
-	pxcGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+	pmmGroups := map[string]GroupObj{
+		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30}}},
+		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60}}},
+		"resources": {"resources", map[string]Parameter{
+			"request_memory": {"memory", "request", "resources", "1", "1", 1, 2},
+			"request_cpu":    {"cpu", "request", "resources", "1000", "1000", 100, 2000},
+			"limit_memory":   {"memory", "limit", "resources", "1", "!", 1, 2},
+			"limit_cpu":      {"cpu", "limit", "resources", "1000", "1000", 100, 2000},
+		}},
+	}
 
-	families := map[string]Family{"mysql": {"pxc", pxcGroups}, "proxy": {"haproxy", haproxyGroups}}
+	mysqlGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
+	mysqlGroups["configuration_server"] = GroupObj{"server", serverGroup}
+	mysqlGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
+	mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+
+	families := map[string]Family{"mysql": {"pxc", mysqlGroups}, "proxy": {"haproxy", haproxyGroups}, "monitor": {"pmm", pmmGroups}}
 
 	return families
 

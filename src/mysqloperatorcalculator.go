@@ -123,6 +123,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	// create and init all the different params organized by families
 	families = family.Init()
 	conf.Init()
+	ConfRequest = getConfForConfRequest(ConfRequest, conf)
 
 	// initialize the configurator (where all the things happens)
 	var c Configurator
@@ -151,6 +152,28 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	//fmt.Fprintf(os.Stdout, "\n%s\n", body)
 
+}
+
+// we loop the arrays to get all the info we may need for the operation using the ID as reference
+func getConfForConfRequest(request Objects.ConfigurationRequest, conf Objects.Configuration) Objects.ConfigurationRequest {
+
+	for i := 0; i < len(conf.Dimension); i++ {
+
+		if request.Dimension.Id == conf.Dimension[i].Id {
+			request.Dimension = conf.Dimension[i]
+			break
+		}
+	}
+
+	for i := 0; i < len(conf.LoadType); i++ {
+
+		if request.Dimension.Id == conf.LoadType[i].Id {
+			request.LoadType = conf.LoadType[i]
+			break
+		}
+	}
+
+	return request
 }
 
 func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *Objects.ConfigurationRequest, message Objects.ResponseMessage, families map[string]Objects.Family) error {
@@ -186,6 +209,10 @@ func getHumanOutput(message Objects.ResponseMessage, request *Objects.Configurat
 	b.Write(fb.Bytes())
 
 	family = families["proxy"]
+	fb = family.ParseGroupsHuman()
+	b.Write(fb.Bytes())
+
+	family = families["monitor"]
 	fb = family.ParseGroupsHuman()
 	b.Write(fb.Bytes())
 
