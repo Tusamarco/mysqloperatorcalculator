@@ -1,6 +1,6 @@
 # MySQL Calculator for Operator
 ## Why 
-With the advent of Kubernets (k8), had become incresingly common to deploy RBDMS on K8 supported platforms. 
+With the advent of Kubernets (k8s), had become incresingly common to deploy RBDMS on K8s supported platforms. 
 However the way MySQL and also the other components should be set and tune is very different from what is the "standard" way. 
 To facilitate the setup and configuration of MYSQL and related, I have wrote this small tool that works as a simple service and that can be query directly 
 from your application.
