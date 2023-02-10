@@ -143,8 +143,9 @@ func (conf *Configuration) Init() {
 		{8, "12XLarge", 48000, 192, 45000, 2000, 1000, 190, 1.5, 0.500},
 		{9, "16XLarge", 64000, 256, 60000, 3000, 1000, 253, 2, 1},
 		{10, "24XLarge", 96000, 384, 90000, 4000, 2000, 380, 2.5, 1.5},
+		{999, "Open request", 0, 0, 0, 0, 0, 0, 0, 0},
 	}
-
+	//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 	conf.LoadType = []LoadType{}
 
 	loadT := make(map[string]int)
@@ -184,6 +185,10 @@ func (family *Family) Init() map[string]Family {
 		"thread_stack":                {"thread_stack", "configuration", "server", "1024", "1024", 125, 1048576},
 		"table_open_cache_instances":  {"table_open_cache_instances", "configuration", "server", "4", "16", 1, 64},
 		"tablespace_definition_cache": {"tablespace_definition_cache", "configuration", "server", "512", "256", 256, 524288},
+		//Adding values to match common advisors checks
+		"sync_binlog":                {"sync_binlog", "configuration", "server", "1", "1", 0, 1},
+		"sql_mode":                   {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY STRICT_TRANS_TABLES NO_ZERO_IN_DATE NO_ZERO_DATE ERROR_FOR_DIVISION_BY_ZERO NO_ENGINE_SUBSTITUTION TRADITIONAL STRICT_ALL_TABLES'", "0", 0, 1},
+		"binlog_expire_logs_seconds": {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0},
 	}
 
 	innodbGroup := map[string]Parameter{
@@ -311,4 +316,50 @@ func (f Family) parseParamsHuman(group GroupObj) bytes.Buffer {
 	}
 
 	return b
+}
+
+func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension {
+	if dimension.Cpu > 0 && dimension.Memory > 0 {
+		//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
+		// first identify the range request fits in
+		calcDimension := conf.getDimensionForFreeCalculation(dimension)
+
+		dimension.MysqlCpu = int(float64(dimension.Cpu) * float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu))
+		dimension.ProxyCpu = int(float64(dimension.Cpu) * float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu))
+		dimension.PmmCpu = int(float64(dimension.Cpu) * float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu))
+		dimension.MysqlMemory = float64(dimension.Memory) * calcDimension.MysqlMemory / calcDimension.Memory
+		dimension.ProxyMemory = float64(dimension.Memory) * calcDimension.ProxyMemory / calcDimension.Memory
+		dimension.PmmMemory = float64(dimension.Memory) * calcDimension.PmmMemory / calcDimension.Memory
+
+	}
+
+	return dimension
+}
+
+// We return the dimension that is closer to the request
+func (conf *Configuration) getDimensionForFreeCalculation(dimension Dimension) Dimension {
+	var calcDimension Dimension
+	for i := 0; i < len(conf.Dimension)-1; i++ {
+		if i == 0 && (dimension.Cpu <= conf.Dimension[i].Cpu || dimension.Memory <= conf.Dimension[i].Memory) {
+			calcDimension = conf.Dimension[i]
+			break
+		} else if i > 0 && (InBetween(dimension.Cpu, conf.Dimension[i-1].Cpu, conf.Dimension[i].Cpu) ||
+			InBetween(int(dimension.Memory), int(conf.Dimension[i-1].Memory), int(conf.Dimension[i].Memory))) {
+			// we always pich the smaller set for more conservative approach
+			calcDimension = conf.Dimension[i-1]
+			break
+		} else if i == len(conf.Dimension)-1 && (dimension.Cpu >= conf.Dimension[i].Cpu || dimension.Memory >= conf.Dimension[i].Memory) {
+			calcDimension = conf.Dimension[i]
+			break
+		}
+	}
+
+	return calcDimension
+}
+func InBetween(i, min, max int) bool {
+	if (i >= min) && (i <= max) {
+		return true
+	} else {
+		return false
+	}
 }

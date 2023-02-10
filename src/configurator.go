@@ -67,7 +67,13 @@ func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 
 func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, conf o.Configuration, message o.ResponseMessage) (o.ResponseMessage, bool) {
 
-	dim := conf.GetDimensionByID(r.Dimension.Id)
+	//if dimension is custom we take it from request otherwise from Configuration
+	var dim o.Dimension
+	if r.Dimension.Id != 999 {
+		dim = conf.GetDimensionByID(r.Dimension.Id)
+	} else {
+		dim = r.Dimension
+	}
 	load := conf.GetLoadByID(r.LoadType.Id)
 	if load.Id == 0 || dim.Id == 0 {
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))

@@ -88,6 +88,27 @@ Transfer-Encoding: chunked
   ]
 }
 ```
+From version `1.1.0` we support also open requests, this means you can pass the values for memory and cpu in open forms.
+When retrieving the supported dimensions you will notice a special group `999`:
+```json
+   {
+      "id": 999,
+      "name": "Open request",
+      "cpu": 0,
+      "memory": 0,
+      "mysqlCpu": 0,
+      "proxyCpu": 0,
+      "pmmCpu": 0,
+      "mysqlMemory": 0,
+      "proxyMemory": 0,
+      "pmmMemory": 0
+    }
+```
+This is the ID you should use for your request, plus the values for CPU and Memory ie:
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100}' http://127.0.0.1:8080/calculator`
+
+The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
+
 Let see each section one by one.
 #### Dimension
 - id : is what you will use to ASK the calculation
@@ -110,11 +131,32 @@ Here I just report some example, however connections can be any number from 50 u
 
 
 ## Getting the calculation back
-Once you have it running and have decide what to pick, is time to get the calculation back.
+Once you have it running and have decided what to pick, is time to get the calculation back.
 
 To get the "results" you need to query a different entry point `/calculator` instead the previously used `/supported`.
 to test it you can do something like:
 `curl -i -X GET -H "Content-Type: application/json" -d '{"output":"json","dbtype":"pxc", "dimension":  {"id": 2}, "loadtype":  {"id": 2}, "connections": 400}' http://127.0.0.1:8080/calculator` 
+
+From version `1.1.0` we support also open requests, this means you can pass the values for memory and cpu in open forms.
+When retrieving the supported dimensions you will notice a special group `999`:
+```json
+   {
+      "id": 999,
+      "name": "Open request",
+      "cpu": 0,
+      "memory": 0,
+      "mysqlCpu": 0,
+      "proxyCpu": 0,
+      "pmmCpu": 0,
+      "mysqlMemory": 0,
+      "proxyMemory": 0,
+      "pmmMemory": 0
+    }
+```
+This is the ID you should use for your request, plus the values for CPU and Memory ie:
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100}' http://127.0.0.1:8080/calculator`
+
+The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
 
 Your (long) output will look like this:
 ```json
