@@ -34,7 +34,7 @@ func main() {
 	flag.BoolVar(&version, "version", false, "to get product version")
 	flag.Parse()
 
-	var versionS = "1.0.0"
+	var versionS = "1.1.0"
 	//initialize help
 
 	//just check if we need to pass version or help
@@ -118,6 +118,13 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 			return err
 		}
 		return nil
+	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0) {
+		err := returnErrorMessage(writer, request, &ConfRequest, responseMsg, families, "Open dimension request missing CPU OR Memory value "+string(body[:]))
+		if err != nil {
+			return err
+		}
+		return nil
+
 	}
 
 	// create and init all the different params organized by families
@@ -131,7 +138,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	if connectionsOverload {
 		responseMsg.MName = "Resources Overload"
-		responseMsg.MText = "Too many connections for the choosed dimension. Resource Overlaoad, decrese number of connections OR choose higer CPUs number"
+		responseMsg.MText = "Too many connections for the chose dimension. Resource Overload, decrease number of connections OR choose higher CPUs number"
 		families = make(map[string]Objects.Family)
 	} else {
 		// here is the calculation step
@@ -157,12 +164,17 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 // we loop the arrays to get all the info we may need for the operation using the ID as reference
 func getConfForConfRequest(request Objects.ConfigurationRequest, conf Objects.Configuration) Objects.ConfigurationRequest {
 
-	for i := 0; i < len(conf.Dimension); i++ {
+	if request.Dimension.Id != 999 {
+		for i := 0; i < len(conf.Dimension); i++ {
 
-		if request.Dimension.Id == conf.Dimension[i].Id {
-			request.Dimension = conf.Dimension[i]
-			break
+			if request.Dimension.Id == conf.Dimension[i].Id {
+				request.Dimension = conf.Dimension[i]
+				break
+			}
 		}
+	} else {
+		//We need to calibrate the dimension on the base of an open request
+		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
 	}
 
 	for i := 0; i < len(conf.LoadType); i++ {
