@@ -18,11 +18,12 @@ type Configurator struct {
 
 // This structure is used to keep information that is needed while calculating the parameters
 type references struct {
-	memory             float64 //total memory available
-	cpus               int     //total cpus
-	gcache             int64   // assigned gcache dimension
-	gcacheFootprint    int64   // expected file footprint in memory
-	gcacheLoad         float64 // gcache load adj factor base don type of load
+	memory          float64 //total memory available
+	cpus            int     //total cpus
+	gcache          int64   // assigned gcache dimension
+	gcacheFootprint int64   // expected file footprint in memory
+	gcacheLoad      float64 // gcache load adj factor base on type of load
+
 	memoryLeftover     int64   // memory free after all calculation
 	innodbRedoLogDim   int64   // total redolog dimension
 	innoDBbpSize       int64   // Calculated BP to apply
@@ -42,6 +43,10 @@ type references struct {
 	memoryMySQL        float64 // memory assigned to MySQL
 	memoryProxy        float64 // memory assigned to proxy
 	memoryPmm          float64 // memory assigned to pmm
+	gcscache           int64   // assigned GR GCScache dimension
+	gcscacheFootprint  int64   // GR GCScache expected file footprint in memory
+	gcscacheLoad       float64 // GR GCScache load adj factor base on memory available
+
 }
 
 // GetAllGaleraProviderOptionsAsString return all provider option considered as single string for the parameter value
@@ -108,6 +113,9 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 		((dim.MysqlMemory * 1024) * 1024) * 1024,
 		((dim.ProxyMemory * 1024) * 1024) * 1024,
 		((dim.PmmMemory * 1024) * 1024) * 1024,
+		0,
+		0,
+		1,
 	}
 
 	c.reference = &ref
@@ -156,9 +164,15 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 
 		// Innodb Redolog
 		c.getInnodbRedolog()
+		if c.request.DBType == "pxc" {
+			// Gcache
+			c.getGcache()
+		}
 
-		// Gcache
-		c.getGcache()
+		if c.request.DBType == "group_replication" {
+			// GCS cache
+			c.getGCScache()
+		}
 
 		// Innodb BP and Params
 		c.getInnodbParameters()
@@ -166,8 +180,10 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 		// set Server params
 		c.getServerParameters()
 
-		// set galera provider options
-		c.getGaleraParameters()
+		if c.request.DBType == "pxc" {
+			// set galera provider options
+			c.getGaleraParameters()
+		}
 
 		// set Probes timeouts
 		// MySQL
@@ -207,7 +223,7 @@ func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 
 }
 
-//processing per connections first
+// processing per connections first
 func (c *Configurator) getConnectionBuffers() {
 
 	group := c.families["mysql"].Groups["configuration_connection"]
@@ -411,7 +427,7 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter o.Parame
 
 }
 
-//adjust the gcache dimension based on the type of load
+// adjust the gcache dimension based on the type of load
 func (c *Configurator) getGcacheLoad() float64 {
 	switch c.reference.loadID {
 	case 1:
@@ -433,6 +449,8 @@ func (c *Configurator) getInnodbParameters() {
 	group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_purge_threads"] = c.paramInnoDPurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
+
+	group.Parameters["innodb_parallel_read_threads"] = c.paramInnoDBinnodb_parallel_read_threads(group.Parameters["innodb_parallel_read_threads"])
 
 	c.families["mysql"].Groups["configuration_innodb"] = group
 }
@@ -678,7 +696,7 @@ func (c *Configurator) getProbesAndResources(family string) {
 	parameter := group.Parameters["timeoutSeconds"]
 	val = int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
 	if val < 1 {
-		val = parameter.Min
+		val = int(parameter.Min)
 	}
 	parameter.Value = strconv.Itoa(val)
 	group.Parameters["timeoutSeconds"] = parameter
@@ -687,7 +705,7 @@ func (c *Configurator) getProbesAndResources(family string) {
 	group = c.families[family].Groups["livenessProbe"]
 	val = int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
 	if val < 1 {
-		val = parameter.Min
+		val = int(parameter.Min)
 	}
 	parameter.Value = strconv.Itoa(val)
 	group.Parameters["timeoutSeconds"] = parameter
@@ -739,9 +757,11 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.Respo
 	b.WriteString("cpus assign to Proxy  = " + strconv.FormatFloat(c.reference.cpusProxy, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to Monitor= " + strconv.FormatFloat(c.reference.cpusPmm, 'f', 0, 64) + "\n")
 	b.WriteString("\n")
-	b.WriteString("Gcache mem on disk      = " + strconv.FormatInt(c.reference.gcache, 10) + "\n")
-	b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcacheFootPrint, 10) + "\n")
-	b.WriteString("\n")
+	if c.request.DBType == "pxc" {
+		b.WriteString("Gcache mem on disk      = " + strconv.FormatInt(c.reference.gcache, 10) + "\n")
+		b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcacheFootPrint, 10) + "\n")
+		b.WriteString("\n")
+	}
 	b.WriteString("Tmp Table mem Footprint = " + strconv.FormatInt(temTableFootprint, 10) + "\n")
 	b.WriteString("By connection mem tot   = " + strconv.FormatInt(connectionMem, 10) + "\n")
 	b.WriteString("\n")
@@ -773,6 +793,29 @@ func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 	}
 
 	return cpus, memory
+}
+
+// We assign value for parallel read of clustered index equal to the number of virtual cpu available for MySQL
+func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter o.Parameter) o.Parameter {
+	threads := 1
+	cpus := c.reference.cpusMySQL / 1000
+
+	// we just set some limits to the cpu range
+	if cpus > 2 && cpus < 256 {
+		threads = int(cpus)
+	}
+
+	parameter.Value = strconv.Itoa(threads)
+
+	return parameter
+}
+
+// We calculate the dimension of the GCS keeping it as low as possible to prevent OOM Kill
+func (c *Configurator) getGCScache() {
+	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
+	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
+	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
+
 }
 
 func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) (o.ResponseMessage, bool) {

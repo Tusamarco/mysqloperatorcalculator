@@ -4,9 +4,9 @@ import (
 	"bytes"
 )
 
-//***********************************
+// ***********************************
 // Constants
-//***********************************
+// ***********************************
 const OkI = 1001
 const ClosetolimitI = 2001
 const OverutilizingI = 3001
@@ -74,8 +74,8 @@ type Parameter struct {
 	Group   string `yaml:"group" json:"group"`
 	Value   string `yaml:"value" json:"value"`
 	Default string `yaml:"default" json:"default"`
-	Min     int    `yaml:"min" json:"min"`
-	Max     int    `yaml:"max" json:"max"`
+	Min     uint64 `yaml:"min" json:"min"`
+	Max     uint64 `yaml:"max" json:"max"`
 }
 
 // GroupObj Parameters are groupped by typology
@@ -162,7 +162,7 @@ func (conf *Configuration) Init() {
 	conf.Connections = []int{50, 100, 200, 500, 1000, 2000}
 }
 
-func (family *Family) Init() map[string]Family {
+func (family *Family) Init(DBTypeRequest string) map[string]Family {
 
 	// supported parameters are defined here with defaults value and ranges.
 	// to add new we can add here the new one then create a proper method to handle the calculation
@@ -203,14 +203,26 @@ func (family *Family) Init() map[string]Family {
 		"innodb_purge_threads":           {"innodb_purge_threads", "configuration", "innodb", "1", "4", 1, 32},
 		"innodb_io_capacity_max":         {"innodb_io_capacity_max", "configuration", "innodb", "1000", "1400", 100, 0},
 		"innodb_buffer_pool_chunk_size":  {"innodb_buffer_pool_chunk_size", "configuration", "innodb", "2097152", "134217728", 1048576, 0},
+		"innodb_parallel_read_threads":   {"innodb_parallel_read_threads", "configuration", "innodb", "1", "4", 1, 256},
 	}
 
 	wsrepGroup := map[string]Parameter{
 		"wsrep_sync_wait":         {"wsrep_sync_wait", "configuration", "galera", "0", "0", 0, 8},
 		"wsrep_slave_threads":     {"wsrep_slave_threads", "configuration", "galera", "2", "1", 1, 0},
 		"wsrep_trx_fragment_size": {"wsrep_trx_fragment_size", "configuration", "galera", "1048576", "0", 0, 0},
-		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "bytes", "bytes", -1, -1},
+		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "bytes", "bytes", 0, 0},
 		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0},
+	}
+
+	groupReplicationGroup := map[string]Parameter{
+		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "5", "5", 0, 3600},
+		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 2016},
+		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "268435456", "1073741824", 134217728, 18446744073709551615},
+		"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "0", "0", 0, 31536000},
+		"loose_group_replication_poll_spin_loops":                {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "20000", "0", 0, 18446744073709551615},
+		"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 0, 4294967295},
+		"loose_group_replication_communication_max_message_size": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "2097152", "10485760", 0, 1073741824},
+		"loose_group_replication_exit_state_action":              {"loose_group_replication_exit_state_action", "configuration", "groupReplication", "READ_ONLY", "READ_ONLY", 0, 0},
 	}
 
 	mysqlGroups := map[string]GroupObj{
@@ -250,9 +262,15 @@ func (family *Family) Init() map[string]Family {
 	mysqlGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
 	mysqlGroups["configuration_server"] = GroupObj{"server", serverGroup}
 	mysqlGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
-	mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+	if DBTypeRequest == "pxc" {
+		mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+	}
 
-	families := map[string]Family{"mysql": {"pxc", mysqlGroups}, "proxy": {"haproxy", haproxyGroups}, "monitor": {"pmm", pmmGroups}}
+	if DBTypeRequest == "group_replication" {
+		mysqlGroups["configuration_groupReplication"] = GroupObj{"groupReplication", groupReplicationGroup}
+	}
+
+	families := map[string]Family{"mysql": {"mysql", mysqlGroups}, "proxy": {"haproxy", haproxyGroups}, "monitor": {"pmm", pmmGroups}}
 
 	return families
 

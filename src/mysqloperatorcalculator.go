@@ -128,9 +128,9 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	}
 
 	// create and init all the different params organized by families
-	families = family.Init()
 	conf.Init()
 	ConfRequest = getConfForConfRequest(ConfRequest, conf)
+	families = family.Init(ConfRequest.DBType)
 
 	// initialize the configurator (where all the things happens)
 	var c Configurator
