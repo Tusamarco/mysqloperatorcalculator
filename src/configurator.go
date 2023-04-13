@@ -171,7 +171,9 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 
 		if c.request.DBType == "group_replication" {
 			// GCS cache
-			c.getGCScache()
+			group := c.families["mysql"].Groups["configuration_groupReplication"]
+			group.Parameters["loose_group_replication_message_cache_size"] = c.getGCScache(group.Parameters["loose_group_replication_message_cache_size"])
+			c.families["mysql"].Groups["configuration_groupReplication"] = group
 		}
 
 		// Innodb BP and Params
@@ -183,6 +185,11 @@ func (c *Configurator) ProcessRequest() map[string]o.Family {
 		if c.request.DBType == "pxc" {
 			// set galera provider options
 			c.getGaleraParameters()
+		}
+
+		//We set Group replication after we have ste the MySQL values, to tune them better
+		if c.request.DBType == "group_replication" {
+			c.getGroupReplicationParameters()
 		}
 
 		// set Probes timeouts
@@ -453,6 +460,18 @@ func (c *Configurator) getInnodbParameters() {
 	group.Parameters["innodb_parallel_read_threads"] = c.paramInnoDBinnodb_parallel_read_threads(group.Parameters["innodb_parallel_read_threads"])
 
 	c.families["mysql"].Groups["configuration_innodb"] = group
+}
+
+func (c *Configurator) getGroupReplicationParameters() {
+	group := c.families["mysql"].Groups["configuration_groupReplication"]
+	group.Parameters["loose_group_replication_member_expel_timeout"] = c.paramGroupReplicationMemberExpelTimeout(group.Parameters["loose_group_replication_member_expel_timeout"])
+	group.Parameters["loose_group_replication_autorejoin_tries"] = c.paramGroupReplicationAutorejoinTries(group.Parameters["loose_group_replication_autorejoin_tries"])
+	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageCacheSize(group.Parameters["loose_group_replication_communication_max_message_size"])
+	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
+	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
+	group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
+
+	c.families["mysql"].Groups["configuration_groupReplication"] = group
 }
 
 func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Parameter {
@@ -811,11 +830,141 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter o.Param
 }
 
 // We calculate the dimension of the GCS keeping it as low as possible to prevent OOM Kill
-func (c *Configurator) getGCScache() {
+func (c *Configurator) getGCScache(parameter o.Parameter) o.Parameter {
 	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
 	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
+	mem := uint64(c.reference.memoryLeftover / 10)
 
+	def, err := strconv.ParseUint(parameter.Default, 10, 64)
+	if err != nil {
+		print(err.Error())
+	}
+
+	// If the default value is less than the tenth part of the memory foot print then we will use that as value,
+	// otherwise we will calculate it as the tenth of memory leftover
+	if def < mem {
+		parameter.Value = strconv.FormatUint(def, 10)
+	}
+
+	if mem >= parameter.Min {
+		parameter.Value = strconv.FormatUint(mem, 10)
+	} else {
+		parameter.Value = strconv.FormatUint(parameter.Min, 10)
+	}
+
+	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
+
+	return parameter
+
+}
+
+// We calculate the expel timeout based on a Max value that is reasonable, not the maximum value defined in MySQL config
+// the value is calculated don the level of the load
+func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter o.Parameter) o.Parameter {
+	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	def, _ := strconv.Atoi(parameter.Default)
+	if val < def {
+		val = def
+	}
+	parameter.Value = strconv.Itoa(val)
+
+	return parameter
+}
+
+// We calculate the expel timeout based on a Max value that is reasonable, not the maximum value defined in MySQL config
+// the value is calculated don the level of the load
+func (c *Configurator) paramGroupReplicationAutorejoinTries(parameter o.Parameter) o.Parameter {
+	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	def, _ := strconv.Atoi(parameter.Default)
+	if val < def {
+		val = def
+	}
+	parameter.Value = strconv.Itoa(val)
+
+	return parameter
+}
+
+// We use a small message default size when in lack of memory resource to force the fragmentation
+func (c *Configurator) paramGroupReplicationMessageCacheSize(parameter o.Parameter) o.Parameter {
+	val := int64(1048576) //1 mb
+
+	switch c.request.Dimension.Id {
+	case 1:
+		parameter.Value = strconv.FormatInt(val, 10)
+	case 2:
+		val = val * 2
+		parameter.Value = strconv.FormatInt(val, 10)
+	case 3:
+		val = val * 4
+		parameter.Value = strconv.FormatInt(val, 10)
+	case 4:
+		val = val * 6
+		parameter.Value = strconv.FormatInt(val, 10)
+	default:
+		parameter.Value = parameter.Default
+
+	}
+
+	return parameter
+}
+
+// We tune the timeout based on the load factor, higher load longer timeout
+func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter o.Parameter) o.Parameter {
+	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	min := int(parameter.Min)
+	if val < min {
+		val = min
+	}
+	parameter.Value = strconv.Itoa(val)
+
+	return parameter
+}
+
+// we tune the parameter based on the utilization given intense OLTP will require more message handling as such less wait
+// conversely read intensive load may benefit from longer wait to reduce context switching
+func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter o.Parameter) o.Parameter {
+	val, _ := strconv.Atoi(parameter.Value)
+	switch c.request.LoadType.Id {
+	case 1:
+		val = int(parameter.Max)
+	case 2:
+		val = int(parameter.Max) / 2
+	case 3:
+		val = int(parameter.Min)
+
+	}
+
+	parameter.Value = strconv.Itoa(val)
+
+	return parameter
+
+}
+
+// [EXPERIMENTAL] The tuning for this variable is wip
+// given some memory issues we had in the GCS I want to see if using compression can benefit the memory consumption in the GCS cache
+func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter o.Parameter) o.Parameter {
+
+	val := int64(parameter.Min) //126 KB
+
+	switch c.request.Dimension.Id {
+	case 1:
+		parameter.Value = strconv.FormatInt(val, 10)
+	case 2:
+		val = val * 2
+		parameter.Value = strconv.FormatInt(val, 10)
+	case 3:
+		val = val * 4
+		parameter.Value = strconv.FormatInt(val, 10)
+	case 4:
+		val = val * 6
+		parameter.Value = strconv.FormatInt(val, 10)
+	default:
+		parameter.Value = parameter.Default
+
+	}
+
+	return parameter
 }
 
 func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) (o.ResponseMessage, bool) {

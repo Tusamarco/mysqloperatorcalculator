@@ -215,14 +215,21 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	}
 
 	groupReplicationGroup := map[string]Parameter{
-		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "5", "5", 0, 3600},
-		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 2016},
+
+		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "5", "5", 0, 20},
+		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8},
 		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "268435456", "1073741824", 134217728, 18446744073709551615},
-		"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "0", "0", 0, 31536000},
-		"loose_group_replication_poll_spin_loops":                {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "20000", "0", 0, 18446744073709551615},
-		"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 0, 4294967295},
 		"loose_group_replication_communication_max_message_size": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "2097152", "10485760", 0, 1073741824},
-		"loose_group_replication_exit_state_action":              {"loose_group_replication_exit_state_action", "configuration", "groupReplication", "READ_ONLY", "READ_ONLY", 0, 0},
+		"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600},
+		"loose_group_replication_poll_spin_loops":                {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000},
+		"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000},
+		//"loose_group_replication_exit_state_action":              {"loose_group_replication_exit_state_action", "configuration", "groupReplication", "READ_ONLY", "READ_ONLY", 0, 0},
+
+		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 0, 4294967295},
+		//"loose_group_replication_autorejoin_tries":             {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 2016},
+		//"loose_group_replication_unreachable_majority_timeout": {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "0", "0", 0, 31536000},
+		//"loose_group_replication_poll_spin_loops":              {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "20000", "0", 0, 18446744073709551615},
+		//"loose_group_replication_member_expel_timeout":         {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "5", "5", 0, 3600},
 	}
 
 	mysqlGroups := map[string]GroupObj{
