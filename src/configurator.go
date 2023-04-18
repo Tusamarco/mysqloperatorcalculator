@@ -469,7 +469,7 @@ func (c *Configurator) getGroupReplicationParameters() {
 	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageCacheSize(group.Parameters["loose_group_replication_communication_max_message_size"])
 	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
 	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
-	group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
+	//group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
 
 	c.families["mysql"].Groups["configuration_groupReplication"] = group
 }
@@ -496,7 +496,7 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Par
 func (c *Configurator) paramInnoDBBufferPool(parameter o.Parameter) o.Parameter {
 
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.95))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.90))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
 	c.reference.memoryLeftover -= bufferPool
@@ -584,6 +584,7 @@ func (c *Configurator) getServerParameters() {
 	group.Parameters["table_open_cache"] = c.paramServerTableOpenCache(group.Parameters["table_open_cache"])
 	group.Parameters["thread_stack"] = c.paramServerThreadStack(group.Parameters["thread_stack"])
 	group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstances(group.Parameters["table_open_cache_instances"])
+	group.Parameters["thread_cache_size"] = c.paramServerThreadCacheSize(group.Parameters["thread_cache_size"])
 
 	c.families["mysql"].Groups["configuration_server"] = group
 
@@ -743,11 +744,11 @@ func (c *Configurator) setResources(group o.GroupObj, cpus float64, memory float
 	group.Parameters["limit_memory"] = parameter
 
 	parameter = group.Parameters["request_cpu"]
-	parameter.Value = strconv.FormatFloat(float64(cpus)*0.95, 'f', 0, 64)
+	parameter.Value = strconv.FormatFloat(float64(cpus)*0.95, 'f', 0, 64) + "m"
 	group.Parameters["request_cpu"] = parameter
 
 	parameter = group.Parameters["limit_cpu"]
-	parameter.Value = strconv.FormatFloat(cpus, 'f', 0, 64)
+	parameter.Value = strconv.FormatFloat(cpus, 'f', 0, 64) + "m"
 	group.Parameters["limit_cpu"] = parameter
 
 	return group
@@ -781,6 +782,13 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.Respo
 		b.WriteString("Gcache mem Footprint    = " + strconv.FormatInt(gcacheFootPrint, 10) + "\n")
 		b.WriteString("\n")
 	}
+
+	if c.request.DBType == "group_replication" {
+		b.WriteString("GCS cache mem limit      = " + strconv.FormatInt(c.reference.gcscache, 10) + "\n")
+		b.WriteString("GCS cache mem possible Footprint    = " + strconv.FormatInt(c.reference.gcscacheFootprint, 10) + "\n")
+		b.WriteString("\n")
+	}
+
 	b.WriteString("Tmp Table mem Footprint = " + strconv.FormatInt(temTableFootprint, 10) + "\n")
 	b.WriteString("By connection mem tot   = " + strconv.FormatInt(connectionMem, 10) + "\n")
 	b.WriteString("\n")
@@ -791,7 +799,7 @@ func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.Respo
 	b.WriteString("memory leftover         = " + strconv.FormatInt(memLeftOver, 10) + "\n")
 	b.WriteString("\n")
 
-	return fillResponseMessage(bpPct, responseMsg, b)
+	return fillResponseMessage(bpPct, responseMsg, b, c.request.DBType)
 
 }
 
@@ -834,14 +842,14 @@ func (c *Configurator) getGCScache(parameter o.Parameter) o.Parameter {
 	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
 	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
-	mem := uint64(c.reference.memoryLeftover / 10)
+	mem := uint64(c.reference.memoryLeftover / 11)
 
 	def, err := strconv.ParseUint(parameter.Default, 10, 64)
 	if err != nil {
 		print(err.Error())
 	}
 
-	// If the default value is less than the tenth part of the memory foot print then we will use that as value,
+	// If the default value is less than the tenth part of the memory footprint then we will use that as value,
 	// otherwise we will calculate it as the tenth of memory leftover
 	if def < mem {
 		parameter.Value = strconv.FormatUint(def, 10)
@@ -854,6 +862,9 @@ func (c *Configurator) getGCScache(parameter o.Parameter) o.Parameter {
 	}
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
+	c.reference.gcscache = c.reference.gcscacheFootprint
+	c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * 6
+	c.reference.memoryLeftover -= c.reference.gcscacheFootprint
 
 	return parameter
 
@@ -967,14 +978,31 @@ func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter o.Par
 	return parameter
 }
 
-func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer) (o.ResponseMessage, bool) {
+// we use default MySQL formula here
+func (c *Configurator) paramServerThreadCacheSize(parameter o.Parameter) o.Parameter {
+	maxConn := c.request.Connections
+	val := (maxConn / 50) + 8
+	if val > int(parameter.Max) {
+		val = int(parameter.Max)
+	}
+
+	parameter.Value = strconv.Itoa(val)
+	return parameter
+}
+
+func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer, DBType string) (o.ResponseMessage, bool) {
 	overUtilizing := false
-	if pct < 0.50 {
+	minlimit := float64(0.45)
+	if DBType == "group_replication" {
+		minlimit = float64(0.34)
+	}
+
+	if pct < minlimit {
 		msg.MType = o.OverutilizingI
 		msg.MText = "Request cancelled not enough resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 		overUtilizing = true
-	} else if pct > 0.50 && pct <= 0.65 {
+	} else if pct > minlimit && pct <= 0.65 {
 		msg.MType = o.ClosetolimitI
 		msg.MText = "Request processed however not optimal details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
