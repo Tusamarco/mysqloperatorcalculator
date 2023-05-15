@@ -640,14 +640,21 @@ func (c *Configurator) paramServerTableOpenCacheInstances(parameter o.Parameter)
 
 func (c *Configurator) getGaleraProvider(inParameter o.Parameter) o.Parameter {
 	for key, param := range c.providerParams {
-		if param.Value >= 0 {
-			if key != "evs.stats_report_period" {
+
+		switch key {
+		case "gcache.size":
+			param.Value = c.reference.gcache
+		case "evs.stats_report_period":
+			param.Value = 1
+		default:
+			if param.Value >= 0 && c.reference.loadFactor > 0 {
 				param.Value = int64(float32(param.RMax) * c.reference.loadFactor)
-			} else {
-				param.Value = 1
+			} else if param.Value >= 0 {
+				param.Value = param.Defvalue
 			}
-			c.providerParams[key] = param
+
 		}
+		c.providerParams[key] = param
 
 	}
 	asString := c.GetAllGaleraProviderOptionsAsString()
