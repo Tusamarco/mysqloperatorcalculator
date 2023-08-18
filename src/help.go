@@ -15,7 +15,7 @@
  *
  */
 
-package Global
+package main
 
 import "fmt"
 
@@ -25,9 +25,9 @@ type HelpText struct {
 	helpShort string
 }
 
-//func (help *HelpText) Init() {
-//	help.inParams = [2]string{"configfile", "configPath"}
-//}
+//	func (help *HelpText) Init() {
+//		help.inParams = [2]string{"configfile", "configPath"}
+//	}
 func (help *HelpText) PrintLicense() {
 	fmt.Println(help.GetHelpText())
 }

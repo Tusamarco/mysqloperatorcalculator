@@ -455,7 +455,111 @@ The values for the __probes__, are calculated to help you to prevent Kubernetes 
 You must use them and be sure they are correctly set in your CR or all the work done will be useless. 
   
 Resources are the cpu/memory dimension you should set. You will always have a LIMIT and a REQUEST for the resources. Keep in mind that whatever will push your pod above the memory limit will IMMEDIATELY trigger the OOM killer :) not a nice thing to have. 
-  
+
+# Module
+MySQLOperatorCalculator is also available as module.
+This is it you can include it in your code and query it directly getting back objects to browse or Json.
+The example directory contains a very simple example of code on how to do it, but mainly you have to:
+```go 
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"  <----------- Import the module
+	"strconv"
+)
+
+```
+Then when you need it:
+```go
+func main() {
+var my MO.MysqlOperatorCalculator
+
+testSupportedJson(my.GetSupportedLayouts(), my)  <---------------- 
+
+testGetconfiguration(my)
+
+}
+func testSupportedJson(supported MO.Configuration, calculator MO.MysqlOperatorCalculator) {
+	output, err := json.MarshalIndent(&supported, "", "  ")
+	if err != nil {
+		print(err.Error())
+	}
+	fmt.Println(string(output))
+
+}
+```
+In the example above I get the list of all supported platform in Json format
+But the list as objects is already there in one single call:
+```go
+my.GetSupportedLayouts()
+```
+To get the full set of parameters we first need to build the request, then pass it and get back a map containing all the settings:
+```go
+func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
+	var b bytes.Buffer
+	var myRequest MO.ConfigurationRequest
+	var err error
+
+	myRequest.LoadType = MO.LoadType{Id: 2}
+	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, Memory: 2.5}
+	myRequest.DBType = "group_replication" //"pxc"
+	myRequest.Output = "human"             //"human"
+	myRequest.Connections = 70
+	myRequest.Mysqlversion = MO.Version{8, 0, 33}
+
+	moc.Init(myRequest)
+	error, responseMessage, families := moc.GetCalculate()
+	if error != nil {
+		print(error.Error())
+	}
+
+	if responseMessage.MType > 0 {
+		fmt.Errorf(strconv.Itoa(responseMessage.MType) + ": " + responseMessage.MName + " " + responseMessage.MText)
+	}
+	if len(families) > 0 {
+		if myRequest.Output == "json" {
+			b, err = moc.GetJSONOutput(responseMessage, myRequest, families)
+		} else {
+			b, err = moc.GetHumanOutput(responseMessage, myRequest, families)
+		}
+		if err != nil {
+			print(err.Error())
+			return
+		}
+
+		println(b.String())
+
+	}
+
+}
+```
+The first object we need to create is the ConfigurationRequest:
+```go
+	var myRequest MO.ConfigurationRequest
+```
+then we can populate it, in this case we DO NOT set a supported environment but an open scope:
+```go
+	myRequest.LoadType = MO.LoadType{Id: 2}
+	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, Memory: 2.5}
+	myRequest.DBType = "group_replication" //"pxc"
+	myRequest.Output = "human"             //"human"
+	myRequest.Connections = 70
+	myRequest.Mysqlversion = MO.Version{8, 0, 33}
+```
+With DImension Id 999 we declare is going to be an open scope and after we must declare the CPU and memory.
+If instead we choose a fix and supported dimension, then the Dimension.Id and MySQL Version, will be enough.
+
+We then need to:
+```go
+	moc.Init(myRequest)
+	error, responseMessage, families := moc.GetCalculate()
+```
+Where families will be the top container of all our settings.
+We can decide if to parse it as a Map or if convert it to other formats like Json, or plain text.
+
+This is it, easy.
+
 # Final... 
 The toool is there and it needs testing and real evaluation, so I reccomand you to test, test, test whatever configuration you will get. 
 Notihing is perfect, so let me know if you find things that make no sense or not workign as expected. 

@@ -1,4 +1,4 @@
-package Objects
+package mysqloperatorcalculator
 
 import (
 	"bytes"
@@ -21,6 +21,18 @@ const ErrorexecT = "There is an error while processing. See details: %s"
 // Structure definitions
 //********************************
 
+// MySQL version definition
+type Version struct {
+	Major int `json:"major"`
+	Minor int `json:"minor"`
+	Patch int `json:"patch"`
+}
+
+type MySQLVersions struct {
+	Min Version `json:"min"`
+	Max Version `json:"max"`
+}
+
 // ResponseMessage Message is the retruned message
 type ResponseMessage struct {
 	MType int    `json:"type"`
@@ -30,20 +42,22 @@ type ResponseMessage struct {
 
 // Configuration used to pass available configurations
 type Configuration struct {
-	DBType      []string    `json:"dbtype"`
-	Dimension   []Dimension `json:"dimension"`
-	LoadType    []LoadType  `json:"loadtype"`
-	Connections []int       `json:"connections"`
-	Output      []string    `json:"output"`
+	DBType        []string      `json:"dbtype"`
+	Dimension     []Dimension   `json:"dimension"`
+	LoadType      []LoadType    `json:"loadtype"`
+	Connections   []int         `json:"connections"`
+	Output        []string      `json:"output"`
+	Mysqlversions MySQLVersions `json:"mysqlversions"`
 }
 
 // ConfigurationRequest used to store the incoming request
 type ConfigurationRequest struct {
-	DBType      string    `json:"dbtype"`
-	Dimension   Dimension `json:"dimension"`
-	LoadType    LoadType  `json:"loadtype"`
-	Connections int       `json:"connections"`
-	Output      string    `json:"output"`
+	DBType       string    `json:"dbtype"`
+	Dimension    Dimension `json:"dimension"`
+	LoadType     LoadType  `json:"loadtype"`
+	Connections  int       `json:"connections"`
+	Output       string    `json:"output"`
+	Mysqlversion Version   `json:"mysqlversion"`
 }
 
 // Dimension used to represent the POD dimension
@@ -160,6 +174,9 @@ func (conf *Configuration) Init() {
 	}
 
 	conf.Connections = []int{50, 100, 200, 500, 1000, 2000}
+
+	//MySQL SUpported version (testing is with hardcoded then we need to query check.percona.com
+	conf.getMySQLVersion()
 }
 
 func (family *Family) Init(DBTypeRequest string) map[string]Family {
@@ -405,4 +422,10 @@ func InBetween(i, min, max int) bool {
 	} else {
 		return false
 	}
+}
+
+// TODO	***MySQL Supported version (testing is with hardcoded then we need to query check.percona.com ***
+func (conf *Configuration) getMySQLVersion() {
+	conf.Mysqlversions.Max = Version{8, 1, 0}
+	conf.Mysqlversions.Min = Version{8, 0, 32}
 }
