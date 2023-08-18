@@ -1,4 +1,4 @@
-module github.com/Tusamarco/mysqloperatorcalculator-module
+module github.com/Tusamarco/mysqloperatorcalculator
 
 go 1.20
 

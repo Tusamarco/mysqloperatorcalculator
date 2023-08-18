@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	MO "github.com/Tusamarco/mysqloperatorcalculator-module/src/mysqloperatorcalculator"
+	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	"strconv"
 )
 

@@ -465,7 +465,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	MO "github.com/Tusamarco/mysqloperatorcalculator-module/src/mysqloperatorcalculator"  <----------- Import the module
+	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"  <----------- Import the module
 	"strconv"
 )
 

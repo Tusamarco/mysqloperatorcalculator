@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	MO "github.com/Tusamarco/mysqloperatorcalculator-module/src/mysqloperatorcalculator"
+	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	log "github.com/sirupsen/logrus"
 
 	"net/http"
