@@ -1,18 +1,17 @@
-package main
+package mysqloperatorcalculator
 
 import (
 	"bytes"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"math"
-	o "mysqloperatorcalculator/src/Objects"
 	"strconv"
 )
 
 type Configurator struct {
-	request        o.ConfigurationRequest
-	families       map[string]o.Family
-	providerParams map[string]o.ProviderParam
+	request        ConfigurationRequest
+	families       map[string]Family
+	providerParams map[string]ProviderParam
 	reference      *references
 }
 
@@ -70,10 +69,10 @@ func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 	return b
 }
 
-func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, conf o.Configuration, message o.ResponseMessage) (o.ResponseMessage, bool) {
+func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf Configuration, message ResponseMessage) (ResponseMessage, bool) {
 
 	//if dimension is custom we take it from request otherwise from Configuration
-	var dim o.Dimension
+	var dim Dimension
 	if r.Dimension.Id != 999 {
 		dim = conf.GetDimensionByID(r.Dimension.Id)
 	} else {
@@ -123,7 +122,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	// set load factors based on the incoming request
 	loadConnectionFactor := float32(dim.MysqlCpu) / float32(c.reference.connections)
 	if loadConnectionFactor < 1 {
-		message.MType = o.OverutilizingI
+		message.MType = OverutilizingI
 		return message, true
 	}
 	c.reference.loadAdjustmentMax = dim.MysqlCpu / 50
@@ -132,7 +131,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * 0.65)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
-	var p o.ProviderParam
+	var p ProviderParam
 	c.families = fam
 	c.request = r
 	c.providerParams = p.Init()
@@ -140,7 +139,7 @@ func (c *Configurator) init(r o.ConfigurationRequest, fam map[string]o.Family, c
 	return message, false
 }
 
-func (c *Configurator) ProcessRequest() map[string]o.Family {
+func (c *Configurator) ProcessRequest() map[string]Family {
 
 	//Start to perform calculation
 	// flow:
@@ -247,7 +246,7 @@ func (c *Configurator) getConnectionBuffers() {
 	c.families["mysql"].Groups["configuration_connection"] = group
 }
 
-func (c *Configurator) paramBinlogCacheSize(inParameter o.Parameter) o.Parameter {
+func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
 
 	switch c.reference.loadID {
 	case 1:
@@ -264,7 +263,7 @@ func (c *Configurator) paramBinlogCacheSize(inParameter o.Parameter) o.Parameter
 	return inParameter
 }
 
-func (c *Configurator) paramJoinBuffer(inParameter o.Parameter) o.Parameter {
+func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
 
 	switch c.reference.loadID {
 	case 1:
@@ -281,7 +280,7 @@ func (c *Configurator) paramJoinBuffer(inParameter o.Parameter) o.Parameter {
 	return inParameter
 }
 
-func (c *Configurator) paramReadRndBuffer(inParameter o.Parameter) o.Parameter {
+func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case 1:
 		inParameter.Value = strconv.FormatInt(262144, 10)
@@ -297,7 +296,7 @@ func (c *Configurator) paramReadRndBuffer(inParameter o.Parameter) o.Parameter {
 	return inParameter
 }
 
-func (c *Configurator) paramSortBuffer(inParameter o.Parameter) o.Parameter {
+func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case 1:
 		inParameter.Value = strconv.FormatInt(262144, 10)
@@ -313,7 +312,7 @@ func (c *Configurator) paramSortBuffer(inParameter o.Parameter) o.Parameter {
 	return inParameter
 }
 
-func (c *Configurator) calculateTmpTableFootprint(inParameter o.Parameter) int64 {
+func (c *Configurator) calculateTmpTableFootprint(inParameter Parameter) int64 {
 	var footPrint = 0
 	c.reference.tmpTableFootprint, _ = strconv.ParseInt(inParameter.Value, 10, 64)
 
@@ -333,7 +332,7 @@ func (c *Configurator) calculateTmpTableFootprint(inParameter o.Parameter) int64
 }
 
 // sum of the memory utilized  by the connections and the estimated cost of temp table
-func (c *Configurator) sumConnectionBuffers(params map[string]o.Parameter) {
+func (c *Configurator) sumConnectionBuffers(params map[string]Parameter) {
 
 	totMemory := int64(0)
 	for key, param := range params {
@@ -364,7 +363,7 @@ func (c *Configurator) getInnodbRedolog() {
 	c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_log_file_size"] = c.getRedologDimensionTot(parameter)
 }
 
-func (c *Configurator) getRedologDimensionTot(inParameter o.Parameter) o.Parameter {
+func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 
 	var redologTotDimension int64
 
@@ -395,7 +394,7 @@ func (c *Configurator) getRedologDimensionTot(inParameter o.Parameter) o.Paramet
 }
 
 // calculate the number of file for redolog
-func (c *Configurator) getRedologfilesNumber(dimension int64, parameter o.Parameter) o.Parameter {
+func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Parameter) Parameter {
 
 	// transform redolog dimension into MB
 	dimension = int64(math.Ceil((float64(dimension) / 1025) / 1025))
@@ -474,7 +473,7 @@ func (c *Configurator) getGroupReplicationParameters() {
 	c.families["mysql"].Groups["configuration_groupReplication"] = group
 }
 
-func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case 1:
 		parameter.Value = "True"
@@ -493,7 +492,7 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter o.Parameter) o.Par
 }
 
 // calculate BP removing from available memory the connections buffers, gcache memory footprint and give a % of additional space
-func (c *Configurator) paramInnoDBBufferPool(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
 
 	var bufferPool int64
 	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.90))
@@ -505,7 +504,7 @@ func (c *Configurator) paramInnoDBBufferPool(parameter o.Parameter) o.Parameter 
 
 // number of instance can only be more than 1 when we have mor ethan 1 core and BP size will allow it
 // to avoid too many bp we should not go below 500m dimension
-func (c *Configurator) paramInnoDBBufferPoolInstances(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDBBufferPoolInstances(parameter Parameter) Parameter {
 	instances := 1
 	if c.reference.cpus > 2000 {
 		bpSize := float64(((c.reference.innoDBbpSize / 1024) / 1024) / 1024)
@@ -529,7 +528,7 @@ func (c *Configurator) paramInnoDBBufferPoolInstances(parameter o.Parameter) o.P
 	return parameter
 }
 
-func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter Parameter) Parameter {
 	parameter.Value = strconv.Itoa(c.reference.innoDBBPInstances)
 
 	return parameter
@@ -537,7 +536,7 @@ func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter o.Parameter) o.Pa
 
 // purge threads should be set on the base of the table involved in parallel DML, here we assume that a load with intense OLTP has more parallel tables involved than the others
 // the g cache load factor is the one use to tune
-func (c *Configurator) paramInnoDPurgeThreads(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 
 	threads := 4
 	if (c.reference.cpus / 1000) > 4 {
@@ -557,7 +556,7 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter o.Parameter) o.Parameter
 // TODO  this must reflect the storage class used which at the moment is not implemented yet
 // so what we will do is just to stay out of it and keep  it base of the load
 // Advisor thing
-func (c *Configurator) paramInnoDBIOCapacityMax(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case 1:
 		parameter.Value = "1400"
@@ -591,7 +590,7 @@ func (c *Configurator) getServerParameters() {
 }
 
 // set max connection + 2 for admin
-func (c *Configurator) paramServerMaxConnections(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerMaxConnections(parameter Parameter) Parameter {
 
 	parameter.Value = strconv.Itoa(c.reference.connections + 2)
 
@@ -600,7 +599,7 @@ func (c *Configurator) paramServerMaxConnections(parameter o.Parameter) o.Parame
 }
 
 // about thread pool the default is the number of CPU, but we will try to push a bit more doubling them but never going over the double of the dimension threads
-func (c *Configurator) paramServerThreadPool(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerThreadPool(parameter Parameter) Parameter {
 	threads := 4
 	cpus := c.reference.cpusMySQL / 1000
 
@@ -615,30 +614,30 @@ func (c *Configurator) paramServerThreadPool(parameter o.Parameter) o.Parameter 
 }
 
 // TODO  not supported yet need to be tuned on the base of the schema this can be an advisor thing
-func (c *Configurator) paramServerTableDefinitionCache(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerTableDefinitionCache(parameter Parameter) Parameter {
 
 	return parameter
 }
 
 // TODO not supported yet need to be tuned on the base of the schema this can be an advisor thing
-func (c *Configurator) paramServerTableOpenCache(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerTableOpenCache(parameter Parameter) Parameter {
 
 	return parameter
 }
 
 // TODO not supported yet need to be tuned on the base of the schema this can be an advisor thing
-func (c *Configurator) paramServerThreadStack(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerThreadStack(parameter Parameter) Parameter {
 
 	return parameter
 }
 
 // default is 16, but we have seen that this value is crazy high and create memory overload and a lot of fragmentation Advisor to tune
-func (c *Configurator) paramServerTableOpenCacheInstances(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerTableOpenCacheInstances(parameter Parameter) Parameter {
 	parameter.Value = strconv.Itoa(4)
 	return parameter
 }
 
-func (c *Configurator) getGaleraProvider(inParameter o.Parameter) o.Parameter {
+func (c *Configurator) getGaleraProvider(inParameter Parameter) Parameter {
 	for key, param := range c.providerParams {
 
 		switch key {
@@ -673,7 +672,7 @@ func (c *Configurator) getGaleraParameters() {
 	c.families["mysql"].Groups["configuration_galera"] = group
 }
 
-func (c *Configurator) getGaleraSyncWait(parameter o.Parameter) o.Parameter {
+func (c *Configurator) getGaleraSyncWait(parameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case 1:
 		parameter.Value = "0"
@@ -691,7 +690,7 @@ func (c *Configurator) getGaleraSyncWait(parameter o.Parameter) o.Parameter {
 
 }
 
-func (c *Configurator) getGaleraSlaveThreads(parameter o.Parameter) o.Parameter {
+func (c *Configurator) getGaleraSlaveThreads(parameter Parameter) Parameter {
 
 	cpus := int(math.Floor(float64(c.reference.cpusMySQL / 1000)))
 
@@ -706,7 +705,7 @@ func (c *Configurator) getGaleraSlaveThreads(parameter o.Parameter) o.Parameter 
 }
 
 // TODO this is something to tune with advisors for now let us set a default of 1MB period
-func (c *Configurator) getGaleraFragmentSize(parameter o.Parameter) o.Parameter {
+func (c *Configurator) getGaleraFragmentSize(parameter Parameter) Parameter {
 	return parameter
 }
 
@@ -740,7 +739,7 @@ func (c *Configurator) getProbesAndResources(family string) {
 
 }
 
-func (c *Configurator) setResources(group o.GroupObj, cpus float64, memory float64) o.GroupObj {
+func (c *Configurator) setResources(group GroupObj, cpus float64, memory float64) GroupObj {
 	// we set the memory request as 95% of the available memory and set Limit as 100%
 	parameter := group.Parameters["request_memory"]
 	parameter.Value = strconv.FormatFloat(float64(memory)*0.95, 'f', 0, 64)
@@ -762,7 +761,7 @@ func (c *Configurator) setResources(group o.GroupObj, cpus float64, memory float
 }
 
 // EvaluateResources here we give a basic check about the resources and if is over we just set the message as overload and remove the families details
-func (c *Configurator) EvaluateResources(responseMsg o.ResponseMessage) (o.ResponseMessage, bool) {
+func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseMessage, bool) {
 	totMeme := c.reference.memory
 	reqConnections := c.reference.connections
 	reqCpu := c.reference.cpus
@@ -830,7 +829,7 @@ func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 }
 
 // We assign value for parallel read of clustered index equal to the number of virtual cpu available for MySQL
-func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Parameter) Parameter {
 	threads := 1
 	cpus := c.reference.cpusMySQL / 1000
 
@@ -845,7 +844,7 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter o.Param
 }
 
 // We calculate the dimension of the GCS keeping it as low as possible to prevent OOM Kill
-func (c *Configurator) getGCScache(parameter o.Parameter) o.Parameter {
+func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
 	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
@@ -879,7 +878,7 @@ func (c *Configurator) getGCScache(parameter o.Parameter) o.Parameter {
 
 // We calculate the expel timeout based on a Max value that is reasonable, not the maximum value defined in MySQL config
 // the value is calculated don the level of the load
-func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter Parameter) Parameter {
 	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
 	def, _ := strconv.Atoi(parameter.Default)
 	if val < def {
@@ -892,7 +891,7 @@ func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter o.Param
 
 // We calculate the expel timeout based on a Max value that is reasonable, not the maximum value defined in MySQL config
 // the value is calculated don the level of the load
-func (c *Configurator) paramGroupReplicationAutorejoinTries(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramGroupReplicationAutorejoinTries(parameter Parameter) Parameter {
 	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
 	def, _ := strconv.Atoi(parameter.Default)
 	if val < def {
@@ -904,7 +903,7 @@ func (c *Configurator) paramGroupReplicationAutorejoinTries(parameter o.Paramete
 }
 
 // We use a small message default size when in lack of memory resource to force the fragmentation
-func (c *Configurator) paramGroupReplicationMessageCacheSize(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramGroupReplicationMessageCacheSize(parameter Parameter) Parameter {
 	val := int64(1048576) //1 mb
 
 	switch c.request.Dimension.Id {
@@ -928,7 +927,7 @@ func (c *Configurator) paramGroupReplicationMessageCacheSize(parameter o.Paramet
 }
 
 // We tune the timeout based on the load factor, higher load longer timeout
-func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter Parameter) Parameter {
 	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
 	min := int(parameter.Min)
 	if val < min {
@@ -941,7 +940,7 @@ func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter
 
 // we tune the parameter based on the utilization given intense OLTP will require more message handling as such less wait
 // conversely read intensive load may benefit from longer wait to reduce context switching
-func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter Parameter) Parameter {
 	val, _ := strconv.Atoi(parameter.Value)
 	switch c.request.LoadType.Id {
 	case 1:
@@ -961,7 +960,7 @@ func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter o.Parameter)
 
 // [EXPERIMENTAL] The tuning for this variable is wip
 // given some memory issues we had in the GCS I want to see if using compression can benefit the memory consumption in the GCS cache
-func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter Parameter) Parameter {
 
 	val := int64(parameter.Min) //126 KB
 
@@ -986,7 +985,7 @@ func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter o.Par
 }
 
 // we use default MySQL formula here
-func (c *Configurator) paramServerThreadCacheSize(parameter o.Parameter) o.Parameter {
+func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter {
 	maxConn := c.request.Connections
 	val := (maxConn / 50) + 8
 	if val > int(parameter.Max) {
@@ -997,7 +996,7 @@ func (c *Configurator) paramServerThreadCacheSize(parameter o.Parameter) o.Param
 	return parameter
 }
 
-func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer, DBType string) (o.ResponseMessage, bool) {
+func fillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBType string) (ResponseMessage, bool) {
 	overUtilizing := false
 	minlimit := float64(0.45)
 	if DBType == "group_replication" {
@@ -1005,16 +1004,16 @@ func fillResponseMessage(pct float64, msg o.ResponseMessage, b bytes.Buffer, DBT
 	}
 
 	if pct < minlimit {
-		msg.MType = o.OverutilizingI
+		msg.MType = OverutilizingI
 		msg.MText = "Request cancelled not enough resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 		overUtilizing = true
 	} else if pct > minlimit && pct <= 0.65 {
-		msg.MType = o.ClosetolimitI
+		msg.MType = ClosetolimitI
 		msg.MText = "Request processed however not optimal details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 	} else if pct > 0.66 {
-		msg.MType = o.OkI
+		msg.MType = OkI
 		msg.MText = "Request ok, resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 	}
