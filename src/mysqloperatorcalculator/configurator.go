@@ -211,10 +211,10 @@ func (c *Configurator) filterByMySQLVersion() map[string]Family {
 		"." + strconv.Itoa(c.request.Mysqlversion.Patch))
 
 	//iterate cross all parameters
-	for l1Key, l1Val := range c.families {
-		print("Processing L1 " + l1Key)
-		for l2Key, l2Val := range l1Val.Groups {
-			println("Processing L2" + l2Key)
+	for _, l1Val := range c.families {
+		//print("Processing L1 " + l1Key)
+		for _, l2Val := range l1Val.Groups {
+			//println("Processing L2" + l2Key)
 			for l3Key, l3Val := range l2Val.Parameters {
 				paramVmin, _ := version.NewVersion(strconv.Itoa(l3Val.Mysqlversions.Min.Major) +
 					"." + strconv.Itoa(l3Val.Mysqlversions.Min.Minor) +
@@ -226,7 +226,7 @@ func (c *Configurator) filterByMySQLVersion() map[string]Family {
 				//We identify the parameters that have a valid mysql version, only them will be processed
 				if l3Val.Mysqlversions.Min.Major > 0 {
 					if incomingV.GreaterThanOrEqual(paramVmin) && incomingV.LessThanOrEqual(paramVmax) {
-						println(l3Val.Name + " = " + l3Val.Value)
+						//println(l3Val.Name + " = " + l3Val.Value)
 					} else {
 						//if the version do not fits in the window define the parameter is removed from the list of the returned
 						delete(l2Val.Parameters, l3Key)

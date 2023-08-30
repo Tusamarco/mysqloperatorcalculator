@@ -85,7 +85,20 @@ Transfer-Encoding: chunked
   "output": [
     "human",
     "json"
-  ]
+  ],
+  "mysqlversions": {
+    "min": {
+      "major": 8,
+      "minor": 0,
+      "patch": 32
+    },
+    "max": {
+      "major": 8,
+      "minor": 1,
+      "patch": 0
+    }
+  }
+
 }
 ```
 From version `1.1.0` we support also open requests, this means you can pass the values for memory and cpu in open forms.
@@ -129,13 +142,18 @@ Here I just report some example, however connections can be any number from 50 u
 - json : well it is json you can use in your application 
 - human : will give you some kindish of my.cnf output plus more information on top. You can use to easily check the output and/or cut and paste in a my.cnf
 
+### MySQL Version
+MySQL versions report the range of supported version by configurator. Inside that window the parameters settings and/or presence may change.
+This is it, you may have a different value given the version of the MySQL or a parameter can be fully removed. 
+
 
 ## Getting the calculation back
 Once you have it running and have decided what to pick, is time to get the calculation back.
 
 To get the "results" you need to query a different entry point `/calculator` instead the previously used `/supported`.
 to test it you can do something like:
-`curl -i -X GET -H "Content-Type: application/json" -d '{"output":"json","dbtype":"pxc", "dimension":  {"id": 2}, "loadtype":  {"id": 2}, "connections": 400}' http://127.0.0.1:8080/calculator` 
+`curl -i -X GET -H "Content-Type: application/json" -d '{"output":"json","dbtype":"pxc", "dimension":  {"id": 2}, "loadtype":  {"id": 2}, "connections": 400, "mysqlversion": {"major":8,"minor":
+0, "patch": 30}}' http://127.0.0.1:8080/calculator` 
 
 From version `1.1.0` we support also open requests, this means you can pass the values for memory and cpu in open forms.
 When retrieving the supported dimensions you will notice a special group `999`:
@@ -273,7 +291,19 @@ Your (long) output will look like this:
             "value": "131072",
             "default": "32768",
             "min": 32768,
-            "max": 0
+            "max": 0,
+            "mysqlversions": {
+              "min": {
+                "major": 8,
+                "minor": 0,
+                "patch": 30
+              },
+              "max": {
+                "major": 8,
+                "minor": 1,
+                "patch": 0
+              }
+            }
           },
           "binlog_stmt_cache_size": {
             "name": "binlog_stmt_cache_size",
@@ -282,7 +312,19 @@ Your (long) output will look like this:
             "value": "131072",
             "default": "32768",
             "min": 32768,
-            "max": 0
+            "max": 0,
+            "mysqlversions": {
+              "min": {
+                "major": 8,
+                "minor": 0,
+                "patch": 30
+              },
+              "max": {
+                "major": 8,
+                "minor": 1,
+                "patch": 0
+              }
+            }
           },
 <snip ...>
         }
