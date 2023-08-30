@@ -117,7 +117,10 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	request.Body.Read(body)
 
 	// we need to process the request and get the values
-	json.Unmarshal(body, &ConfRequest)
+	err1 := json.Unmarshal(body, &ConfRequest)
+	if err1 != nil {
+		println(err1.Error())
+	}
 
 	// Before going to the configurator we check the incoming request and IF is not ok we return an error message
 	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {

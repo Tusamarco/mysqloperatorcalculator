@@ -3,6 +3,7 @@ package mysqloperatorcalculator
 import (
 	"bytes"
 	"fmt"
+	"github.com/hashicorp/go-version"
 	log "github.com/sirupsen/logrus"
 	"math"
 	"strconv"
@@ -198,8 +199,45 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 		c.getProbesAndResources("proxy")
 		c.getProbesAndResources("monitor")
 	}
-	return c.families
+	return c.filterByMySQLVersion()
 
+}
+
+// Filter out the parameter based on mysql version
+func (c *Configurator) filterByMySQLVersion() map[string]Family {
+
+	incomingV, _ := version.NewVersion(strconv.Itoa(c.request.Mysqlversion.Major) +
+		"." + strconv.Itoa(c.request.Mysqlversion.Minor) +
+		"." + strconv.Itoa(c.request.Mysqlversion.Patch))
+
+	//iterate cross all parameters
+	for l1Key, l1Val := range c.families {
+		print("Processing L1 " + l1Key)
+		for l2Key, l2Val := range l1Val.Groups {
+			println("Processing L2" + l2Key)
+			for l3Key, l3Val := range l2Val.Parameters {
+				paramVmin, _ := version.NewVersion(strconv.Itoa(l3Val.Mysqlversions.Min.Major) +
+					"." + strconv.Itoa(l3Val.Mysqlversions.Min.Minor) +
+					"." + strconv.Itoa(l3Val.Mysqlversions.Min.Patch))
+				paramVmax, _ := version.NewVersion(strconv.Itoa(l3Val.Mysqlversions.Max.Major) +
+					"." + strconv.Itoa(l3Val.Mysqlversions.Max.Minor) +
+					"." + strconv.Itoa(l3Val.Mysqlversions.Max.Patch))
+
+				//We identify the parameters that have a valid mysql version, only them will be processed
+				if l3Val.Mysqlversions.Min.Major > 0 {
+					if incomingV.GreaterThanOrEqual(paramVmin) && incomingV.LessThanOrEqual(paramVmax) {
+						println(l3Val.Name + " = " + l3Val.Value)
+					} else {
+						//if the version do not fits in the window define the parameter is removed from the list of the returned
+						delete(l2Val.Parameters, l3Key)
+					}
+
+				}
+			}
+		}
+	}
+
+	return c.families
 }
 
 // calculate gcache effects on memory (estimation)
