@@ -28,7 +28,7 @@ func main() {
 	flag.BoolVar(&version, "version", false, "to get product version")
 	flag.Parse()
 
-	var versionS = "1.2.1"
+	var versionS = "1.4.1"
 	//initialize help
 
 	//just check if we need to pass version or help
