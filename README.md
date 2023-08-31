@@ -458,7 +458,12 @@ I put it in so you can validate that what the tools is processing is what you ha
     "example": "Shops online  up to 20% Writes "
   },
   "connections": 400,
-  "output": "json"
+  "output": "json",
+  "mysqlversion": {
+    "major": 8,
+    "minor": 0,
+    "patch": 30
+  }
 }
 ```
 
