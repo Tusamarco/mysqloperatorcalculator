@@ -123,14 +123,19 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	}
 
 	// Before going to the configurator we check the incoming request and IF is not ok we return an error message
-	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
-		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Possible Malformed request "+string(body[:]))
+	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 || ConfRequest.Mysqlversion.Major == 0 {
+		var message = ""
+		if ConfRequest.Mysqlversion.Major == 0 {
+			message = "Missing MySQL Version"
+		}
+
+		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Possible Malformed request "+string(body[:])+" "+message)
 		if err != nil {
 			return err
 		}
 		return nil
-	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0) {
-		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Open dimension request missing CPU OR Memory value "+string(body[:]))
+	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0 || ConfRequest.Mysqlversion.Major == 0) {
+		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Open dimension request missing CPU, Memory value or MySQL Version"+string(body[:]))
 		if err != nil {
 			return err
 		}
