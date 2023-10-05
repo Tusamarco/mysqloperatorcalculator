@@ -209,7 +209,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"thread_pool_size":            {"thread_pool_size", "configuration", "server", "2", "2", 2, 64, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"table_definition_cache":      {"table_definition_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"table_open_cache":            {"table_open_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"thread_stack":                {"thread_stack", "configuration", "server", "1024", "1024", 125, 1048576, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"thread_stack":                {"thread_stack", "configuration", "server", "1048576", "1048576", 131072, 393216, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"table_open_cache_instances":  {"table_open_cache_instances", "configuration", "server", "4", "16", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"tablespace_definition_cache": {"tablespace_definition_cache", "configuration", "server", "512", "256", 256, 524288, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		//Adding values to match common advisors checks
