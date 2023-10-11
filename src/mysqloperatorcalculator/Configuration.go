@@ -203,7 +203,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"max_heap_table_size":    {"max_heap_table_size", "configuration", "connection", "16777216", "16777216", 16777216, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"tmp_table_size":         {"tmp_table_size", "configuration", "connection", "16777216", "16777216", 16777216, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 	}
-
+	//TODO !!! Review thread_pool_size & thread_cache_size !!!
 	serverGroup := map[string]Parameter{
 		"max_connections":             {"max_connections", "configuration", "server", "50", "2", 2, 65536, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"thread_pool_size":            {"thread_pool_size", "configuration", "server", "2", "2", 2, 64, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
