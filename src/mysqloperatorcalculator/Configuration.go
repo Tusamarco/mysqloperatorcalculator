@@ -17,6 +17,11 @@ const ClosetolimitT = "Execution was successful however resources are close to s
 const OverutilizingT = "Resources not enough to cover the requested load "
 const ErrorexecT = "There is an error while processing. See details: %s"
 
+const LoadTypeMostlyReads = 1
+const LoadTypeSomeWrites = 2
+const LoadTypeEqualReadsWrites = 3
+const LoadTypeHeavyWrites = 4
+
 //*********************************
 // Structure definitions
 //********************************

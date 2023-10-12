@@ -252,13 +252,13 @@ func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		return impedance
-	case 2:
+	case LoadTypeSomeWrites:
 		return impedance
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		return impedance
-	case 4:
+	case LoadTypeHeavyWrites:
 		return impedance
 	default:
 		return float32(c.reference.loadAdjustmentMax / 1)
@@ -304,13 +304,13 @@ func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
 func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(524288, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(1048576, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(1048576, 10)
 
 	}
@@ -320,13 +320,13 @@ func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
 
 func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(393216, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(707788, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(707788, 10)
 
 	}
@@ -336,13 +336,13 @@ func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
 
 func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(524288, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(1572864, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(2097152, 10)
 
 	}
@@ -355,13 +355,13 @@ func (c *Configurator) calculateTmpTableFootprint(inParameter Parameter) int64 {
 	c.reference.tmpTableFootprint, _ = strconv.ParseInt(inParameter.Value, 10, 64)
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.03)
-	case 2:
+	case LoadTypeSomeWrites:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.01)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.04)
-	case 4:
+	case LoadTypeHeavyWrites:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.05)
 	}
 
@@ -406,11 +406,11 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 	var redologTotDimension int64
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.15 + (0.15 * c.reference.loadFactor)))
-	case 2:
+	case LoadTypeSomeWrites:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.2 + (0.2 * c.reference.loadFactor)))
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.3 + (0.3 * c.reference.loadFactor)))
 	default:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.15 + (0.15 * c.reference.loadFactor)))
@@ -474,11 +474,11 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Paramete
 // adjust the gcache dimension based on the type of load
 func (c *Configurator) getGcacheLoad() float64 {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		return 1
-	case 2:
+	case LoadTypeSomeWrites:
 		return 1.15
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		return 1.2
 	default:
 		return 1
@@ -513,13 +513,13 @@ func (c *Configurator) getGroupReplicationParameters() {
 
 func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		parameter.Value = "True"
 		return parameter
-	case 2:
+	case LoadTypeSomeWrites:
 		parameter.Value = "True"
 		return parameter
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		parameter.Value = "False"
 		return parameter
 	default:
@@ -596,13 +596,13 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 // Advisor thing
 func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		parameter.Value = "1400"
 		return parameter
-	case 2:
+	case LoadTypeSomeWrites:
 		parameter.Value = "1800"
 		return parameter
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		parameter.Value = "2000"
 		return parameter
 	default:
@@ -712,13 +712,13 @@ func (c *Configurator) getGaleraParameters() {
 
 func (c *Configurator) getGaleraSyncWait(parameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		parameter.Value = "0"
 		return parameter
-	case 2:
+	case LoadTypeSomeWrites:
 		parameter.Value = "3"
 		return parameter
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		parameter.Value = "3"
 		return parameter
 	default:
@@ -981,11 +981,11 @@ func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter
 func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter Parameter) Parameter {
 	val, _ := strconv.Atoi(parameter.Value)
 	switch c.request.LoadType.Id {
-	case 1:
+	case LoadTypeMostlyReads:
 		val = int(parameter.Max)
-	case 2:
+	case LoadTypeSomeWrites:
 		val = int(parameter.Max) / 2
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		val = int(parameter.Min)
 
 	}
