@@ -74,7 +74,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 
 	//if dimension is custom we take it from request otherwise from Configuration
 	var dim Dimension
-	if r.Dimension.Id != 999 {
+	if r.Dimension.Id != DimensionOpen {
 		dim = conf.GetDimensionByID(r.Dimension.Id)
 	} else {
 		dim = r.Dimension
@@ -195,9 +195,9 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 		// set Probes timeouts
 		// MySQL
 		// Proxy
-		c.getProbesAndResources("mysql")
-		c.getProbesAndResources("proxy")
-		c.getProbesAndResources("monitor")
+		c.getProbesAndResources(FamilyTypeMysql)
+		c.getProbesAndResources(FamilyTypeProxy)
+		c.getProbesAndResources(FamilyTypeMonitor)
 	}
 	return c.filterByMySQLVersion()
 
@@ -852,13 +852,13 @@ func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 	memory := 0.0
 
 	switch family {
-	case "mysql":
+	case FamilyTypeMysql:
 		cpus = c.reference.cpusMySQL
 		memory = c.reference.memoryMySQL
-	case "proxy":
+	case FamilyTypeProxy:
 		cpus = c.reference.cpusPmm
 		memory = c.reference.memoryProxy
-	case "monitor":
+	case FamilyTypeMonitor:
 		cpus = c.reference.cpusPmm
 		memory = c.reference.memoryPmm
 	}

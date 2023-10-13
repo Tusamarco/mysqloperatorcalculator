@@ -28,12 +28,11 @@ func main() {
 	flag.BoolVar(&version, "version", false, "to get product version")
 	flag.Parse()
 
-	var versionS = "1.4.1"
 	//initialize help
 
 	//just check if we need to pass version or help
 	if version {
-		fmt.Println("MySQL calculator for Operator Version: ", versionS)
+		fmt.Println("MySQL calculator for Operator Version: ", MO.VERSION)
 		exitWithCode(0)
 	} else if helpB {
 		flag.PrintDefaults()
@@ -134,7 +133,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 			return err
 		}
 		return nil
-	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0 || ConfRequest.Mysqlversion.Major == 0) {
+	} else if ConfRequest.Dimension.Id == MO.DimensionOpen && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0 || ConfRequest.Mysqlversion.Major == 0) {
 		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Open dimension request missing CPU, Memory value or MySQL Version"+string(body[:]))
 		if err != nil {
 			return err
@@ -180,7 +179,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 // we loop the arrays to get all the info we may need for the operation using the ID as reference
 func getConfForConfRequest(request MO.ConfigurationRequest, conf MO.Configuration) MO.ConfigurationRequest {
 
-	if request.Dimension.Id != 999 {
+	if request.Dimension.Id != MO.DimensionOpen {
 		for i := 0; i < len(conf.Dimension); i++ {
 
 			if request.Dimension.Id == conf.Dimension[i].Id {

@@ -2,11 +2,14 @@ package mysqloperatorcalculator
 
 import (
 	"bytes"
+	"errors"
 )
 
 // ***********************************
 // Constants
 // ***********************************
+const VERSION = "v1.5.2"
+
 const OkI = 1001
 const ClosetolimitI = 2001
 const OverutilizingI = 3001
@@ -21,6 +24,23 @@ const LoadTypeMostlyReads = 1
 const LoadTypeSomeWrites = 2
 const LoadTypeEqualReadsWrites = 3
 const LoadTypeHeavyWrites = 4
+
+const DimensionOpen = 999
+
+const FamilyTypeMysql = "mysql"
+const FamilyTypeProxy = "proxy"
+const FamilyTypeMonitor = "monitor"
+
+const GroupNameMySQLd = "mysqld"
+const GroupNameProbes = "probes"
+const GroupNameResources = "resources"
+const GroupNameHAProxy = "haproxyConfig"
+
+const DbTypePXC = "pxc"
+const DbTypeGroupReplication = "group_replication"
+
+const ResultOutputFormatJson = "json"
+const ResultOutputFormatHuman = "human"
 
 //*********************************
 // Structure definitions
@@ -150,8 +170,8 @@ func (respM *ResponseMessage) GetMessageText(id int) string {
 // Init here is where we define the different options
 // it will be possible to increment the supported solutions adding here the items
 func (conf *Configuration) Init() {
-	conf.DBType = []string{"group_replication", "pxc"}
-	conf.Output = []string{"human", "json"}
+	conf.DBType = []string{DbTypeGroupReplication, DbTypePXC}
+	conf.Output = []string{ResultOutputFormatHuman, ResultOutputFormatJson}
 	conf.Dimension = []Dimension{
 		{1, "XSmall", 1000, 2, 600, 200, 100, 1.7, 0.200, 0.100},
 		{2, "Small", 2500, 4, 2000, 350, 150, 3.5, 0.400, 0.100},
@@ -163,7 +183,7 @@ func (conf *Configuration) Init() {
 		{8, "12XLarge", 48000, 192, 45000, 2000, 1000, 190, 1.5, 0.500},
 		{9, "16XLarge", 64000, 256, 60000, 3000, 1000, 253, 2, 1},
 		{10, "24XLarge", 96000, 384, 90000, 4000, 2000, 380, 2.5, 1.5},
-		{999, "Open request", 0, 0, 0, 0, 0, 0, 0, 0},
+		{DimensionOpen, "Open request", 0, 0, 0, 0, 0, 0, 0, 0},
 	}
 	//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 	conf.LoadType = []LoadType{}
@@ -284,9 +304,15 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	}
 
 	haproxyGroups := map[string]GroupObj{
-		"readinessProbe":        {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
-		"livenessProbe":         {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
-		"ha_connection_timeout": {"ha_connection_timeout", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "ha_connection_timeout", "5", "1000", 1000, 5000, MySQLVersions{}}}},
+		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
+		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
+		"haproxyConfig": {"haproxy", map[string]Parameter{
+			"ha_connection_timeout": {"ha_connection_timeout", "", "haproxyConfig", "5", "1000", 1000, 5000, MySQLVersions{}},
+			"maxconn":               {"maxconn", "", "haproxyConfig", "4048", "2024", 1000, 5000, MySQLVersions{}},
+			"timeout_client":        {"timeout_client", "", "haproxyConfig", "28800", "14400", 1000, 50000, MySQLVersions{}},
+			"timeout_connect":       {"timeout_connect", "", "haproxyConfig", "100500", "100500", 1000, 500000, MySQLVersions{}},
+			"timeout_server":        {"timeout_server", "", "haproxyConfig", "28800", "14400", 1000, 50000, MySQLVersions{}},
+		}},
 		"resources": {"resources", map[string]Parameter{
 			"request_memory": {"memory", "request", "resources", "1", "1", 1, 2, MySQLVersions{}},
 			"request_cpu":    {"cpu", "request", "resources", "1000", "1000", 1000, 2000, MySQLVersions{}},
@@ -311,15 +337,15 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	mysqlGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
 	mysqlGroups["configuration_replica"] = GroupObj{"replica", replicaGroup}
 
-	if DBTypeRequest == "pxc" {
+	if DBTypeRequest == DbTypePXC {
 		mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
 	}
 
-	if DBTypeRequest == "group_replication" {
+	if DBTypeRequest == DbTypeGroupReplication {
 		mysqlGroups["configuration_groupReplication"] = GroupObj{"groupReplication", groupReplicationGroup}
 	}
 
-	families := map[string]Family{"mysql": {"mysql", mysqlGroups}, "proxy": {"haproxy", haproxyGroups}, "monitor": {"pmm", pmmGroups}}
+	families := map[string]Family{FamilyTypeMysql: {"mysql", mysqlGroups}, FamilyTypeProxy: {"haproxy", haproxyGroups}, FamilyTypeMonitor: {"pmm", pmmGroups}}
 
 	return families
 
@@ -362,13 +388,14 @@ func (pP *ProviderParam) Init() map[string]ProviderParam {
 	return pMap
 }
 
+// the function return all the groups in the family in one shot as byte buffer
 func (f Family) ParseGroupsHuman() bytes.Buffer {
 	var b bytes.Buffer
 
 	b.WriteString("[" + f.Name + "]" + "\n")
 	for key, group := range f.Groups {
-		b.WriteString("    [" + key + "]" + "\n")
-		pb := f.parseParamsHuman(group)
+		b.WriteString("  [" + key + "]" + "\n")
+		pb := f.parseParamsHuman(group, "    ")
 		b.Write(pb.Bytes())
 	}
 
@@ -376,10 +403,86 @@ func (f Family) ParseGroupsHuman() bytes.Buffer {
 
 }
 
-func (f Family) parseParamsHuman(group GroupObj) bytes.Buffer {
+// the function return the group by name as byte buffer
+func (f Family) ParseFamilyGroup(groupName string, padding string) (bytes.Buffer, error) {
+	var b bytes.Buffer
+	var err1 error
+	switch groupName {
+	case GroupNameMySQLd:
+		return f.parseMySQLDHuman(padding), err1
+	case GroupNameHAProxy:
+		return f.parseHumanProxy(padding), err1
+	case GroupNameProbes:
+		return f.parseProbesHuman(padding), err1
+	case GroupNameResources:
+		return f.parseResourcesHuman(padding), err1
+	default:
+		err1 = errors.New("ERROR: Invalid Group name " + groupName)
+		return b, err1
+	}
+
+}
+
+func (f Family) parseHumanProxy(padding string) bytes.Buffer {
+	var b bytes.Buffer
+	for key, group := range f.Groups {
+		if key != "readinessProbe" && key != "livenessProbe" && key != "resources" {
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+	return b
+}
+
+func (f Family) parseMySQLDHuman(padding string) bytes.Buffer {
+	var b bytes.Buffer
+
+	b.WriteString("[mysqld]" + "\n")
+	for key, group := range f.Groups {
+		if key != "readinessProbe" && key != "livenessProbe" && key != "resources" {
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+
+	return b
+
+}
+
+func (f Family) parseProbesHuman(padding string) bytes.Buffer {
+	var b bytes.Buffer
+
+	for key, group := range f.Groups {
+		if key == "readinessProbe" || key == "livenessProbe" {
+			b.WriteString("[" + key + "]" + "\n")
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+
+	return b
+
+}
+
+func (f Family) parseResourcesHuman(padding string) bytes.Buffer {
+	var b bytes.Buffer
+
+	for key, group := range f.Groups {
+		if key == "resources" {
+			b.WriteString("[" + key + "]" + "\n")
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+
+	return b
+
+}
+
+func (f Family) parseParamsHuman(group GroupObj, padding string) bytes.Buffer {
 	var b bytes.Buffer
 	for key, param := range group.Parameters {
-		b.WriteString("      " + key + " = " + param.Value + "\n")
+		b.WriteString(padding + key + " = " + param.Value + "\n")
 	}
 
 	return b
@@ -436,3 +539,7 @@ func (conf *Configuration) getMySQLVersion() {
 	conf.Mysqlversions.Max = Version{8, 1, 0}
 	conf.Mysqlversions.Min = Version{8, 0, 32}
 }
+
+//=====================================================
+//Families section
+//=====================================================
