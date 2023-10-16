@@ -611,7 +611,7 @@ We can decide if to parse it as a Map or if convert it to other formats like Jso
 This is it, easy.
 
 From version `1.5.0` mysqloperatorcalculator supports the use of contants and more important, when using _HUMAN_ output you can retrive the parameters by Group.
-Please refer to the (example.go)[example/example.go] file. 
+Please refer to the [example.go](example/example.go) file. 
 
 
 # Final... 
