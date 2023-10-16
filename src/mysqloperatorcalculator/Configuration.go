@@ -9,39 +9,41 @@ import (
 // ***********************************
 // Constants
 // ***********************************
-const VERSION = "v1.5.2"
+const (
+	VERSION = "v1.5.2"
 
-const OkI = 1001
-const ClosetolimitI = 2001
-const OverutilizingI = 3001
-const ErrorexecI = 5001
+	OkI            = 1001
+	ClosetolimitI  = 2001
+	OverutilizingI = 3001
+	ErrorexecI     = 5001
 
-const OkT = "Execution was successful and resources match the possible requests"
-const ClosetolimitT = "Execution was successful however resources are close to saturation based on the load requested"
-const OverutilizingT = "Resources not enough to cover the requested load "
-const ErrorexecT = "There is an error while processing. See details: %s"
+	OkT            = "Execution was successful and resources match the possible requests"
+	ClosetolimitT  = "Execution was successful however resources are close to saturation based on the load requested"
+	OverutilizingT = "Resources not enough to cover the requested load "
+	ErrorexecT     = "There is an error while processing. See details: %s"
 
-const LoadTypeMostlyReads = 1
-const LoadTypeSomeWrites = 2
-const LoadTypeEqualReadsWrites = 3
-const LoadTypeHeavyWrites = 4
+	LoadTypeMostlyReads      = 1
+	LoadTypeSomeWrites       = 2
+	LoadTypeEqualReadsWrites = 3
+	LoadTypeHeavyWrites      = 4
 
-const DimensionOpen = 999
+	DimensionOpen = 999
 
-const FamilyTypeMysql = "mysql"
-const FamilyTypeProxy = "proxy"
-const FamilyTypeMonitor = "monitor"
+	FamilyTypeMysql   = "mysql"
+	FamilyTypeProxy   = "proxy"
+	FamilyTypeMonitor = "monitor"
 
-const GroupNameMySQLd = "mysqld"
-const GroupNameProbes = "probes"
-const GroupNameResources = "resources"
-const GroupNameHAProxy = "haproxyConfig"
+	GroupNameMySQLd    = "mysqld"
+	GroupNameProbes    = "probes"
+	GroupNameResources = "resources"
+	GroupNameHAProxy   = "haproxyConfig"
 
-const DbTypePXC = "pxc"
-const DbTypeGroupReplication = "group_replication"
+	DbTypePXC              = "pxc"
+	DbTypeGroupReplication = "group_replication"
 
-const ResultOutputFormatJson = "json"
-const ResultOutputFormatHuman = "human"
+	ResultOutputFormatJson  = "json"
+	ResultOutputFormatHuman = "human"
+)
 
 //*********************************
 // Structure definitions
@@ -240,11 +242,13 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"table_open_cache_instances":  {"table_open_cache_instances", "configuration", "server", "4", "16", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"tablespace_definition_cache": {"tablespace_definition_cache", "configuration", "server", "512", "256", 256, 524288, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		//Adding values to match common advisors checks
-		"sync_binlog":                {"sync_binlog", "configuration", "server", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"sql_mode":                   {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,TRADITIONAL,STRICT_ALL_TABLES'", "0", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"binlog_expire_logs_seconds": {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"binlog_format":              {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"thread_cache_size":          {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"sync_binlog":                       {"sync_binlog", "configuration", "server", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"sql_mode":                          {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,TRADITIONAL,STRICT_ALL_TABLES'", "0", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"binlog_expire_logs_seconds":        {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"binlog_format":                     {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"thread_cache_size":                 {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"global-connection-memory-limit":    {"global-connection-memory-limit", "configuration", "server", "18446744073709551615", "16777216", 4, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"global-connection-memory-tracking": {"global-connection-memory-tracking", "configuration", "server", "false", "false", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 	}
 
 	innodbGroup := map[string]Parameter{
