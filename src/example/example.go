@@ -6,14 +6,15 @@ import (
 	"fmt"
 	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	"strconv"
+	"syscall"
 )
 
 func main() {
-	var my MO.MysqlOperatorCalculator
+	var moc MO.MysqlOperatorCalculator
 
-	testSupportedJson(my.GetSupportedLayouts(), my)
+	testSupportedJson(moc.GetSupportedLayouts(), moc)
 
-	testGetconfiguration(my)
+	testGetconfiguration(moc)
 
 }
 
@@ -48,10 +49,23 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	var err error
 
 	myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
-	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: 2.5}
-	myRequest.DBType = MO.DbTypeGroupReplication //"pxc"
-	myRequest.Output = "human"                   //"human"
-	myRequest.Connections = 70
+	// Memory resource can be set as bytes using MemoryBytes ...
+	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, MemoryBytes: 2684354560}
+	//OR in literal using M G GB etc with Memory
+	// We can assign the value...
+	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
+	// Then convert and validate it if it follows the standards:
+	var errConv error
+	myRequest.Dimension.MemoryBytes, errConv = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
+	// If any error then do what you want ...
+	if errConv != nil {
+		println(errConv.Error())
+		syscall.Exit(1)
+	}
+
+	myRequest.DBType = MO.DbTypeGroupReplication  //"pxc"
+	myRequest.Output = MO.ResultOutputFormatHuman //"human"
+	myRequest.Connections = 0
 	myRequest.Mysqlversion = MO.Version{8, 0, 33}
 
 	moc.Init(myRequest)
@@ -65,7 +79,8 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	}
 	if len(families) > 0 {
 
-		// Two ways of parsing
+		// IF Using HUMAN than:
+		//  we can use the by group parsing option:
 		//----------------------------------------------------------
 		//1 Parsing  families and Groups one by one
 		//----------------------------------------------------------

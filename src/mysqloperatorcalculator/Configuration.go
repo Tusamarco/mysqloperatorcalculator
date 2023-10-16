@@ -2,6 +2,7 @@ package mysqloperatorcalculator
 
 import (
 	"bytes"
+	"code.cloudfoundry.org/bytefmt"
 	"errors"
 )
 
@@ -87,10 +88,11 @@ type ConfigurationRequest struct {
 
 // Dimension used to represent the POD dimension
 type Dimension struct {
-	Id          int     `json:"id"`
-	Name        string  `json:"name"`
-	Cpu         int     `json:"cpu"`
-	Memory      float64 `json:"memory"`
+	Id          int    `json:"id"`
+	Name        string `json:"name"`
+	Cpu         int    `json:"cpu"`
+	Memory      string `json:"memory"`
+	MemoryBytes float64
 	MysqlCpu    int     `json:"mysqlCpu"`
 	ProxyCpu    int     `json:"proxyCpu"`
 	PmmCpu      int     `json:"pmmCpu"`
@@ -138,7 +140,7 @@ func (conf *Configuration) GetDimensionByID(id int) Dimension {
 		}
 
 	}
-	return Dimension{0, "", 0, 0, 0, 0, 0, 0, 0, 0}
+	return Dimension{0, "", 0, "", 0, 0, 0, 0, 0, 0, 0}
 }
 
 // GetLoadByID returns the Load Type using ID attribute
@@ -173,17 +175,17 @@ func (conf *Configuration) Init() {
 	conf.DBType = []string{DbTypeGroupReplication, DbTypePXC}
 	conf.Output = []string{ResultOutputFormatHuman, ResultOutputFormatJson}
 	conf.Dimension = []Dimension{
-		{1, "XSmall", 1000, 2, 600, 200, 100, 1.7, 0.200, 0.100},
-		{2, "Small", 2500, 4, 2000, 350, 150, 3.5, 0.400, 0.100},
-		{3, "Medium", 4500, 8, 3800, 500, 200, 7, 0.700, 0.300},
-		{4, "Large", 6500, 16, 5500, 700, 300, 14, 1.5, 0.500},
-		{5, "2XLarge", 8500, 32, 7400, 800, 300, 30, 1.5, 0.500},
-		{6, "4XLarge", 16000, 64, 14000, 1500, 500, 62, 1.5, 0.500},
-		{7, "8XLarge", 32000, 128, 29000, 2000, 1000, 126, 1.5, 0.500},
-		{8, "12XLarge", 48000, 192, 45000, 2000, 1000, 190, 1.5, 0.500},
-		{9, "16XLarge", 64000, 256, 60000, 3000, 1000, 253, 2, 1},
-		{10, "24XLarge", 96000, 384, 90000, 4000, 2000, 380, 2.5, 1.5},
-		{DimensionOpen, "Open request", 0, 0, 0, 0, 0, 0, 0, 0},
+		{1, "XSmall", 1000, "2GB", 2147483648, 600, 200, 100, 1825361100, 214748364, 107374182},
+		{2, "Small", 2500, "4GB", 4294967296, 2000, 350, 150, 3758096384, 429496729, 107374182},
+		{3, "Medium", 4500, "8GB", 8589934592, 3800, 500, 200, 7516192768, 751619276, 322122547},
+		{4, "Large", 6500, "16GB", 17179869184, 5500, 700, 300, 15032385536, 1610612736, 536870912},
+		{5, "2XLarge", 8500, "32GB", 34359738368, 7400, 800, 300, 32212254720, 1610612736, 536870912},
+		{6, "4XLarge", 16000, "64GB", 34359738368, 14000, 1500, 500, 66571993088, 1610612736, 536870912},
+		{7, "8XLarge", 32000, "128GB", 137438953472, 29000, 2000, 1000, 135291469824, 1610612736, 536870912},
+		{8, "12XLarge", 48000, "192GB", 206158430208, 45000, 2000, 1000, 204010946560, 1610612736, 536870912},
+		{9, "16XLarge", 64000, "256GB", 274877906944, 60000, 3000, 1000, 271656681472, 2147483648, 1073741824},
+		{10, "24XLarge", 96000, "384GB", 412316860416, 90000, 4000, 2000, 408021893120, 2684354560, 1610612736},
+		{DimensionOpen, "Open request", 0, "0GB", 0, 0, 0, 0, 0, 0, 0},
 	}
 	//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 	conf.LoadType = []LoadType{}
@@ -489,7 +491,7 @@ func (f Family) parseParamsHuman(group GroupObj, padding string) bytes.Buffer {
 }
 
 func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension {
-	if dimension.Cpu > 0 && dimension.Memory > 0 {
+	if dimension.Cpu > 0 && dimension.MemoryBytes > 0 {
 		//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 		// first identify the range request fits in
 		calcDimension := conf.getDimensionForFreeCalculation(dimension)
@@ -497,9 +499,9 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 		dimension.MysqlCpu = int(float64(dimension.Cpu) * float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu))
 		dimension.ProxyCpu = int(float64(dimension.Cpu) * float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu))
 		dimension.PmmCpu = int(float64(dimension.Cpu) * float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu))
-		dimension.MysqlMemory = float64(dimension.Memory) * calcDimension.MysqlMemory / calcDimension.Memory
-		dimension.ProxyMemory = float64(dimension.Memory) * calcDimension.ProxyMemory / calcDimension.Memory
-		dimension.PmmMemory = float64(dimension.Memory) * calcDimension.PmmMemory / calcDimension.Memory
+		dimension.MysqlMemory = float64(dimension.MemoryBytes) * calcDimension.MysqlMemory / calcDimension.MemoryBytes
+		dimension.ProxyMemory = float64(dimension.MemoryBytes) * calcDimension.ProxyMemory / calcDimension.MemoryBytes
+		dimension.PmmMemory = float64(dimension.MemoryBytes) * calcDimension.PmmMemory / calcDimension.MemoryBytes
 
 	}
 
@@ -510,11 +512,11 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 func (conf *Configuration) getDimensionForFreeCalculation(dimension Dimension) Dimension {
 	var calcDimension Dimension
 	for i := 0; i < len(conf.Dimension)-1; i++ {
-		if i == 0 && (dimension.Cpu <= conf.Dimension[i].Cpu || dimension.Memory <= conf.Dimension[i].Memory) {
+		if i == 0 && (dimension.Cpu <= conf.Dimension[i].Cpu || dimension.MemoryBytes <= conf.Dimension[i].MemoryBytes) {
 			calcDimension = conf.Dimension[i]
 			break
 		} else if i > 0 && (InBetween(dimension.Cpu, conf.Dimension[i-1].Cpu, conf.Dimension[i].Cpu) ||
-			InBetween(int(dimension.Memory), int(conf.Dimension[i-1].Memory), int(conf.Dimension[i].Memory))) {
+			InBetween(int(dimension.MemoryBytes), int(conf.Dimension[i-1].MemoryBytes), int(conf.Dimension[i].MemoryBytes))) {
 			// we always pich the smaller set for more conservative approach
 			calcDimension = conf.Dimension[i-1]
 			break
@@ -540,6 +542,16 @@ func (conf *Configuration) getMySQLVersion() {
 	conf.Mysqlversions.Min = Version{8, 0, 32}
 }
 
-//=====================================================
-//Families section
-//=====================================================
+// =====================================================
+// Dimension section
+// =====================================================
+func (d *Dimension) ConvertMemoryToBytes(memoryHuman string) (float64, error) {
+	var memoryBytes float64
+	b, err1 := bytefmt.ToBytes(memoryHuman)
+	if err1 != nil {
+		return 0, err1
+	}
+	memoryBytes = float64(b)
+	//memoryBytes, err1 = strconv.ParseFloat(b.String(), 64)
+	return memoryBytes, err1
+}

@@ -10,10 +10,11 @@ import (
 )
 
 type Configurator struct {
-	request        ConfigurationRequest
-	families       map[string]Family
-	providerParams map[string]ProviderParam
-	reference      *references
+	request            ConfigurationRequest
+	families           map[string]Family
+	providerParams     map[string]ProviderParam
+	reference          *references
+	connectionResearch bool
 }
 
 // This structure is used to keep information that is needed while calculating the parameters
@@ -84,12 +85,12 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))
 	}
 	connections := r.Connections
-	if connections < 50 {
+	if connections < 50 && connections != 0 {
 		connections = 50
 	}
 
 	ref := references{
-		((dim.Memory * 1024) * 1024) * 1024, // convert to bytes
+		dim.MemoryBytes,
 		dim.Cpu,
 		0,
 		0,
@@ -110,9 +111,9 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		float64(dim.PmmCpu),
 		float64(dim.ProxyCpu),
 		float64(dim.MysqlCpu),
-		((dim.MysqlMemory * 1024) * 1024) * 1024,
-		((dim.ProxyMemory * 1024) * 1024) * 1024,
-		((dim.PmmMemory * 1024) * 1024) * 1024,
+		dim.MysqlMemory,
+		dim.ProxyMemory,
+		dim.PmmMemory,
 		0,
 		0,
 		1,
@@ -287,13 +288,13 @@ func (c *Configurator) getConnectionBuffers() {
 func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(32768, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(131072, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(358400, 10)
 
 	}
@@ -435,7 +436,7 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Parameter) Parameter {
 
 	// transform redolog dimension into MB
-	dimension = int64(math.Ceil((float64(dimension) / 1025) / 1025))
+	dimension = int64(math.Ceil((float64(dimension) / 1024) / 1024))
 
 	switch {
 	case dimension < 500:
@@ -810,13 +811,13 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	memLeftOver := c.reference.memoryLeftover
 
 	var b bytes.Buffer
-	b.WriteString("\n\nTot Memory          = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
+	b.WriteString("\n\nTot Memory Bytes    = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
 	b.WriteString("Tot CPU                 = " + strconv.Itoa(reqCpu) + "\n")
 	b.WriteString("Tot Connections         = " + strconv.Itoa(reqConnections) + "\n")
 	b.WriteString("\n")
-	b.WriteString("memory assign to mysql  = " + strconv.FormatFloat(c.reference.memoryMySQL, 'f', 0, 64) + "\n")
-	b.WriteString("memory assign to Proxy  = " + strconv.FormatFloat(c.reference.memoryProxy, 'f', 0, 64) + "\n")
-	b.WriteString("memory assign to Monitor= " + strconv.FormatFloat(c.reference.memoryPmm, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to mysql Bytes   = " + strconv.FormatFloat(c.reference.memoryMySQL, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to Proxy Bytes   = " + strconv.FormatFloat(c.reference.memoryProxy, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to Monitor Bytes = " + strconv.FormatFloat(c.reference.memoryPmm, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to mysql  = " + strconv.FormatFloat(c.reference.cpusMySQL, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to Proxy  = " + strconv.FormatFloat(c.reference.cpusProxy, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to Monitor= " + strconv.FormatFloat(c.reference.cpusPmm, 'f', 0, 64) + "\n")
