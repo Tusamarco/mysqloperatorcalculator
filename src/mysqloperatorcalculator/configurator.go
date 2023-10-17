@@ -538,7 +538,7 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
 
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.90))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.95))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
 	c.reference.memoryLeftover -= bufferPool
@@ -647,7 +647,7 @@ func (c *Configurator) paramServerThreadPool(parameter Parameter) Parameter {
 	cpus := c.reference.cpusMySQL / 1000
 
 	// we just set some limits to the cpu range
-	if cpus > 2 && cpus < 256 {
+	if cpus > 2 && cpus <= 256 {
 		threads = int(cpus) * 2
 	}
 
