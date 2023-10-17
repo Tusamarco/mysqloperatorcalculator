@@ -27,19 +27,50 @@ func (m *MysqlOperatorCalculator) GetSupportedLayouts() Configuration {
 
 // this is the External call to calculate the whole set
 func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[string]Family) {
+	var responseMsg ResponseMessage
+	var families map[string]Family
+	var ConfRequest ConfigurationRequest
+
+	ConfRequest = moc.IncomingRequest
+
+	// Before going to the configurator we check the incoming request and IF is not ok we return an error message
+	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
+		err := fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id)
+		if err != nil {
+			return err, responseMsg, families
+		}
+		return nil, responseMsg, families
+	} else if ConfRequest.Dimension.Id == DimensionOpen && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.MemoryBytes == 0) {
+		err := fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory)
+		if err != nil {
+			return err, responseMsg, families
+		}
+		return nil, responseMsg, families
+
+	} else if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
+		err := fmt.Errorf("DB Type is not correct Supported Types are : %s, %s ", DbTypePXC, DbTypeGroupReplication)
+		if err != nil {
+			return err, responseMsg, families
+		}
+		return nil, responseMsg, families
+
+	}
 
 	// Internally if Connection dimension is NOT passed we will loop in a very rude way to calculate the maximum
 	// number of supported calculation
 
 	error, message, Families := moc.getCalculateInt()
+
 	if moc.IncomingRequest.Connections == 0 {
 		for message.MType != OverutilizingI {
 			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections + 10
 			error, message, Families = moc.getCalculateInt()
 		}
+
 		moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
 		error, message, Families = moc.getCalculateInt()
 	}
+
 	return error, message, Families
 }
 
@@ -53,26 +84,6 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 
 	ConfRequest = moc.IncomingRequest
 
-	// Before going to the configurator we check the incoming request and IF is not ok we return an error message
-	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
-		err := fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id)
-		if err != nil {
-			return err, responseMsg, families
-		}
-		return nil, responseMsg, families
-	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.MemoryBytes == 0) {
-		err := fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory)
-		if err != nil {
-			return err, responseMsg, families
-		}
-		return nil, responseMsg, families
-
-	}
-
-	// create and init all the different params organized by families
-	// initialize the configurator (where all the things happens)
-
-	//var c Configurator
 	conf.Init()
 	ConfRequest = getConfForConfRequest(ConfRequest, conf)
 	families = family.Init(ConfRequest.DBType)

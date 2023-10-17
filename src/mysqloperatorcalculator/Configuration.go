@@ -43,6 +43,12 @@ const (
 
 	ResultOutputFormatJson  = "json"
 	ResultOutputFormatHuman = "human"
+
+	// groupreplication
+	GroupRepGCSCacheMemStructureCost = 52428800
+
+	//Connection / CPU adjustment factor
+	CpuConncetionMillFactor = 20
 )
 
 //*********************************
@@ -556,6 +562,6 @@ func (d *Dimension) ConvertMemoryToBytes(memoryHuman string) (float64, error) {
 		return 0, err1
 	}
 	memoryBytes = float64(b)
-	//memoryBytes, err1 = strconv.ParseFloat(b.String(), 64)
+
 	return memoryBytes, err1
 }

@@ -122,14 +122,18 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	c.reference = &ref
 
 	// set load factors based on the incoming request
-	loadConnectionFactor := float32(dim.MysqlCpu) / float32(c.reference.connections)
-	if loadConnectionFactor < 1 {
+	// we first decide how many cycles want by cpu and then calculate the pressure
+	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
+	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
+	if loadConnectionFactor >= 1 {
 		message.MType = OverutilizingI
 		return message, true
 	}
-	c.reference.loadAdjustmentMax = dim.MysqlCpu / 50
-	c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
-	c.reference.loadFactor = 1 - c.reference.loadAdjustment
+
+	//c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
+	//c.reference.loadFactor = 1 - c.reference.loadAdjustment
+	//c.reference.loadAdjustment = loadConnectionFactor
+	c.reference.loadFactor = loadConnectionFactor
 	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * 0.65)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
@@ -147,7 +151,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 	// flow:
 	// 1 get connections
 	// redolog
-	// gcache
+	// gcache or GCS Cache
 	//Innodb Bufferpool + params
 	// server
 	// galera provider
@@ -888,6 +892,20 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
 	mem := uint64(c.reference.memoryLeftover / 11)
+
+	//We need to consider that the cache stucture takes 50MB so we need to remove them from the available
+	mem = mem - GroupRepGCSCacheMemStructureCost
+
+	switch c.reference.loadID {
+	case LoadTypeMostlyReads:
+		mem = uint64(float64(mem) * 0.40)
+	case LoadTypeSomeWrites:
+		mem = uint64(float64(mem) * 0.60)
+	case LoadTypeEqualReadsWrites:
+		mem = uint64(float64(mem) * 0.80)
+	case LoadTypeHeavyWrites:
+		mem = uint64(float64(mem) * 1)
+	}
 
 	def, err := strconv.ParseUint(parameter.Default, 10, 64)
 	if err != nil {
