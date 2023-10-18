@@ -552,7 +552,14 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	var err error
 
 	myRequest.LoadType = MO.LoadType{Id: 2}
-	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, Memory: 2.5}
+	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, Memory: "2.5GB"}
+        var errConv error
+        myRequest.Dimension.MemoryBytes, errConv = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
+        // If any error then do what you want ...
+        if errConv != nil {
+          println(errConv.Error())
+          syscall.Exit(1)
+        }
 	myRequest.DBType = "group_replication" //"pxc"
 	myRequest.Output = "human"             //"human"
 	myRequest.Connections = 70
@@ -591,7 +598,7 @@ The first object we need to create is the ConfigurationRequest:
 then we can populate it, in this case we DO NOT set a supported environment but an open scope:
 ```go
 	myRequest.LoadType = MO.LoadType{Id: 2}
-	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, Memory: 2.5}
+	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, MemoryBytes: 2684354560}
 	myRequest.DBType = "group_replication" //"pxc"
 	myRequest.Output = "human"             //"human"
 	myRequest.Connections = 70
