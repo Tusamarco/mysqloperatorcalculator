@@ -252,7 +252,11 @@ func (c *Configurator) getGcache() {
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
-// TODO WARNING need to add the weight here
+// TODO Thinking...
+// For the moment i have disabled this global adjustment method and preferred to apply the tuning by case.
+// this because we cannot use the same weight in case of READ operation or Write operation in the different moment of the execution
+// What I mean here is that a write can be less expensive than complex read and as such the ADJ factor based on the available cpu cycles needs to take that in consideration
+// Unfortunately from were we are this is not possible to do. However it can become a dynamic parameter tuned by observation using tools such as Advisors.
 func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
 
