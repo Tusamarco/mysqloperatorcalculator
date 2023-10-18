@@ -553,13 +553,13 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 
 	myRequest.LoadType = MO.LoadType{Id: 2}
 	myRequest.Dimension = MO.Dimension{Id: 999, Cpu: 4000, Memory: "2.5GB"}
-    var errConv error
-    myRequest.Dimension.MemoryBytes, errConv = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
-    // If any error then do what you want ...
-    if errConv != nil {
-       println(errConv.Error())
-       syscall.Exit(1)
-    }
+        var errConv error
+        myRequest.Dimension.MemoryBytes, errConv = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
+        // If any error then do what you want ...
+        if errConv != nil {
+          println(errConv.Error())
+          syscall.Exit(1)
+        }
 	myRequest.DBType = "group_replication" //"pxc"
 	myRequest.Output = "human"             //"human"
 	myRequest.Connections = 70
