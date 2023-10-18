@@ -118,9 +118,12 @@ When retrieving the supported dimensions you will notice a special group `999`:
     }
 ```
 This is the ID you should use for your request, plus the values for CPU and Memory ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100}' http://127.0.0.1:8080/calculator`
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
 The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
+From version `1.5.0` we also support the auto calculation of the maximum number of supported connections. 
+To trigger it just pass 0 as the connection value when using the Open Reuest options ie:
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 0,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator``
 
 Let see each section one by one.
 #### Dimension
@@ -172,7 +175,7 @@ When retrieving the supported dimensions you will notice a special group `999`:
     }
 ```
 This is the ID you should use for your request, plus the values for CPU and Memory ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100}' http://127.0.0.1:8080/calculator`
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
 The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
 
@@ -606,6 +609,55 @@ Where families will be the top container of all our settings.
 We can decide if to parse it as a Map or if convert it to other formats like Json, or plain text.
 
 This is it, easy.
+
+From version `1.5.0` mysqloperatorcalculator supports the use of contants and more important, when using _HUMAN_ output you can retrive the parameters by Group.
+Please refer to the [example.go](src/example/example.go) file. 
+
+Let us see some :
+```go
+	myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
+	// Memory resource can be set as bytes using MemoryBytes ...
+	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, MemoryBytes: 2684354560}
+	//OR in literal using M G GB etc with Memory
+	// We can assign the value...
+	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
+	// Then convert and validate it if it follows the standards:
+	var errConv error
+	myRequest.Dimension.MemoryBytes, errConv = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
+	// If any error then do what you want ...
+	if errConv != nil {
+		println(errConv.Error())
+		syscall.Exit(1)
+	}
+```
+So now you can express the Memory dimension in Bytes or literal. However the preferred method when working with the module is **BYTES**
+If using the literal is up to you to deal with possible error and add the converted value, as indicated above.
+
+Let see how I can retrive information by group:
+```go
+		// Parsing MySQL
+		MySQLfamily, err1 := moc.GetFamily(MO.FamilyTypeMysql)
+		if err1 != nil {
+			print(err1.Error())
+		}
+		mysqlStBuffer, err1 := MySQLfamily.ParseFamilyGroup(MO.GroupNameMySQLd, " ")
+		probesStBuffer, err1 := MySQLfamily.ParseFamilyGroup(MO.GroupNameProbes, " ")
+		resourcesStBuffer, err1 := MySQLfamily.ParseFamilyGroup(MO.GroupNameResources, " ")
+
+		if err1 == nil {
+			println("[mysql configuration]")
+			println(mysqlStBuffer.String())
+			println("[mysql probes]")
+			println(probesStBuffer.String())
+			println("[mysql resources]")
+			println(resourcesStBuffer.String())
+		} else {
+			println(err1.Error())
+		}
+
+```
+In this case I am getting only the values for the MySQL family and getting one main group a time.
+They are returned as String Buffer, you will then able to manipulate them as you like.
 
 # Final... 
 The toool is there and it needs testing and real evaluation, so I reccomand you to test, test, test whatever configuration you will get. 
