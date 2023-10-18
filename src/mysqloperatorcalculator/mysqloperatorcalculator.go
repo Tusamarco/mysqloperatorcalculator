@@ -3,6 +3,7 @@ package mysqloperatorcalculator
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 type MysqlOperatorCalculator struct {
 	IncomingRequest ConfigurationRequest
+	configurator    Configurator
 }
 
 func (moc *MysqlOperatorCalculator) Init(inR ConfigurationRequest) {
@@ -23,112 +25,9 @@ func (m *MysqlOperatorCalculator) GetSupportedLayouts() Configuration {
 	return m.getSupported()
 }
 
-// When need to calculate we (for the moment) just catch the request and pass over
-func handleRequestCalculator(writer http.ResponseWriter, request *http.Request) {
-	var err error
-	switch request.Method {
-	case "GET":
-		err = handleGetCalculate(writer, request)
-
-	}
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		log.Error(err)
-	}
-}
-
-//func handleRequestSupported(writer http.ResponseWriter, request *http.Request) {
-//	var err error
-//	switch request.Method {
-//	case "GET":
-//		err = handleGetSupported(writer, request)
-//	}
-//	if err != nil {
-//		http.Error(writer, err.Error(), http.StatusInternalServerError)
-//		log.Error(err)
-//	}
-//}
-
-// here we return a configuration answering to a request like:
-// { "dimension":  {"id": 3, "name": "XSmall",  "cpu": 1000}, "loadtype":  {"id": 2, "name": "Mainly Reads"}, "connections": 50}
-
-func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error {
-	// message object to pass back
-	var responseMsg ResponseMessage
-	var family Family
-	var conf Configuration
-	var families map[string]Family
-	var ConfRequest ConfigurationRequest
-
-	//if we do not have a real request we return a message with the info
-	len := request.ContentLength
-	if len <= 0 {
-		err := returnErrorMessage(writer, request, &ConfRequest, responseMsg, families, "Empty request")
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	body := make([]byte, len)
-	request.Body.Read(body)
-
-	// we need to process the request and get the values
-	json.Unmarshal(body, &ConfRequest)
-
-	// Before going to the configurator we check the incoming request and IF is not ok we return an error message
-	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
-		err := returnErrorMessage(writer, request, &ConfRequest, responseMsg, families, "Possible Malformed request "+string(body[:]))
-		if err != nil {
-			return err
-		}
-		return nil
-	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0) {
-		err := returnErrorMessage(writer, request, &ConfRequest, responseMsg, families, "Open dimension request missing CPU OR Memory value "+string(body[:]))
-		if err != nil {
-			return err
-		}
-		return nil
-
-	}
-
-	// create and init all the different params organized by families
-	conf.Init()
-	ConfRequest = getConfForConfRequest(ConfRequest, conf)
-	families = family.Init(ConfRequest.DBType)
-
-	// initialize the configurator (where all the things happens)
-	var c Configurator
-	responseMsg, connectionsOverload := c.Init(ConfRequest, families, conf, responseMsg)
-
-	if connectionsOverload {
-		responseMsg.MName = "Resources Overload"
-		responseMsg.MText = "Too many connections for the chose dimension. Resource Overload, decrease number of connections OR choose higher CPUs value"
-		families = make(map[string]Family)
-	} else {
-		// here is the calculation step
-		overUtilizing := false
-		c.ProcessRequest()
-		responseMsg, overUtilizing = c.EvaluateResources(responseMsg)
-		//if request overutilize resources WE DO NOT pass params but message
-		if overUtilizing {
-			families = make(map[string]Family)
-		}
-	}
-	err := ReturnResponse(writer, request, &ConfRequest, responseMsg, families)
-	if err != nil {
-		return err
-	}
-
-	return nil
-
-	//fmt.Fprintf(os.Stdout, "\n%s\n", body)
-
-}
+// this is the External call to calculate the whole set
 func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[string]Family) {
-	// message object to pass back
 	var responseMsg ResponseMessage
-	var family Family
-	var conf Configuration
 	var families map[string]Family
 	var ConfRequest ConfigurationRequest
 
@@ -141,8 +40,15 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 			return err, responseMsg, families
 		}
 		return nil, responseMsg, families
-	} else if ConfRequest.Dimension.Id == 999 && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.Memory == 0) {
+	} else if ConfRequest.Dimension.Id == DimensionOpen && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.MemoryBytes == 0) {
 		err := fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory)
+		if err != nil {
+			return err, responseMsg, families
+		}
+		return nil, responseMsg, families
+
+	} else if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
+		err := fmt.Errorf("DB Type is not correct Supported Types are : %s, %s ", DbTypePXC, DbTypeGroupReplication)
 		if err != nil {
 			return err, responseMsg, families
 		}
@@ -150,14 +56,39 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 
 	}
 
-	// create and init all the different params organized by families
-	// initialize the configurator (where all the things happens)
-	var c Configurator
+	// Internally if Connection dimension is NOT passed we will loop in a very rude way to calculate the maximum
+	// number of supported calculation
+
+	error, message, Families := moc.getCalculateInt()
+
+	if moc.IncomingRequest.Connections == 0 {
+		for message.MType != OverutilizingI {
+			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections + 10
+			error, message, Families = moc.getCalculateInt()
+		}
+
+		moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
+		error, message, Families = moc.getCalculateInt()
+	}
+
+	return error, message, Families
+}
+
+func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, map[string]Family) {
+	// message object to pass back
+	var responseMsg ResponseMessage
+	var family Family
+	var conf Configuration
+	var families map[string]Family
+	var ConfRequest ConfigurationRequest
+
+	ConfRequest = moc.IncomingRequest
+
 	conf.Init()
 	ConfRequest = getConfForConfRequest(ConfRequest, conf)
 	families = family.Init(ConfRequest.DBType)
 
-	responseMsg, connectionsOverload := c.Init(ConfRequest, families, conf, responseMsg)
+	responseMsg, connectionsOverload := moc.configurator.Init(ConfRequest, families, conf, responseMsg)
 
 	if connectionsOverload {
 		responseMsg.MName = "Resources Overload"
@@ -166,8 +97,8 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	} else {
 		// here is the calculation step
 		overUtilizing := false
-		c.ProcessRequest()
-		responseMsg, overUtilizing = c.EvaluateResources(responseMsg)
+		moc.configurator.ProcessRequest()
+		responseMsg, overUtilizing = moc.configurator.EvaluateResources(responseMsg)
 
 		//if request overutilize resources WE DO NOT pass params but message
 		if overUtilizing {
@@ -187,7 +118,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 // we loop the arrays to get all the info we may need for the operation using the ID as reference
 func getConfForConfRequest(request ConfigurationRequest, conf Configuration) ConfigurationRequest {
 
-	if request.Dimension.Id != 999 {
+	if request.Dimension.Id != DimensionOpen {
 		for i := 0; i < len(conf.Dimension); i++ {
 
 			if request.Dimension.Id == conf.Dimension[i].Id {
@@ -239,15 +170,15 @@ func (moc *MysqlOperatorCalculator) GetHumanOutput(message ResponseMessage, requ
 	b.WriteString("type = " + strconv.Itoa(message.MType) + "\n")
 	b.WriteString("text = " + message.MText + "\n")
 
-	family := families["mysql"]
+	family, _ := families[FamilyTypeMysql]
 	fb := family.ParseGroupsHuman()
 	b.Write(fb.Bytes())
 
-	family = families["proxy"]
+	family, _ = families[FamilyTypeProxy]
 	fb = family.ParseGroupsHuman()
 	b.Write(fb.Bytes())
 
-	family = families["monitor"]
+	family, _ = families[FamilyTypeMonitor]
 	fb = family.ParseGroupsHuman()
 	b.Write(fb.Bytes())
 
@@ -300,4 +231,21 @@ func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfR
 	}
 
 	return nil
+}
+
+//=====================================================
+//Families section
+//=====================================================
+
+func (moc *MysqlOperatorCalculator) GetFamily(familyname string) (Family, error) {
+	var family Family
+	var err1 error
+
+	if familyname == FamilyTypeMysql ||
+		familyname == FamilyTypeProxy ||
+		familyname == FamilyTypeMonitor {
+		return moc.configurator.families[familyname], err1
+	}
+	err1 = errors.New("ERROR: Invalid Family name")
+	return family, err1
 }

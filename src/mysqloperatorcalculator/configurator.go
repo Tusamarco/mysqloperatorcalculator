@@ -10,10 +10,11 @@ import (
 )
 
 type Configurator struct {
-	request        ConfigurationRequest
-	families       map[string]Family
-	providerParams map[string]ProviderParam
-	reference      *references
+	request            ConfigurationRequest
+	families           map[string]Family
+	providerParams     map[string]ProviderParam
+	reference          *references
+	connectionResearch bool
 }
 
 // This structure is used to keep information that is needed while calculating the parameters
@@ -74,7 +75,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 
 	//if dimension is custom we take it from request otherwise from Configuration
 	var dim Dimension
-	if r.Dimension.Id != 999 {
+	if r.Dimension.Id != DimensionOpen {
 		dim = conf.GetDimensionByID(r.Dimension.Id)
 	} else {
 		dim = r.Dimension
@@ -84,12 +85,12 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))
 	}
 	connections := r.Connections
-	if connections < 50 {
+	if connections < 50 && connections != 0 {
 		connections = 50
 	}
 
 	ref := references{
-		((dim.Memory * 1024) * 1024) * 1024, // convert to bytes
+		dim.MemoryBytes,
 		dim.Cpu,
 		0,
 		0,
@@ -110,9 +111,9 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		float64(dim.PmmCpu),
 		float64(dim.ProxyCpu),
 		float64(dim.MysqlCpu),
-		((dim.MysqlMemory * 1024) * 1024) * 1024,
-		((dim.ProxyMemory * 1024) * 1024) * 1024,
-		((dim.PmmMemory * 1024) * 1024) * 1024,
+		dim.MysqlMemory,
+		dim.ProxyMemory,
+		dim.PmmMemory,
 		0,
 		0,
 		1,
@@ -121,14 +122,18 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	c.reference = &ref
 
 	// set load factors based on the incoming request
-	loadConnectionFactor := float32(dim.MysqlCpu) / float32(c.reference.connections)
-	if loadConnectionFactor < 1 {
+	// we first decide how many cycles want by cpu and then calculate the pressure
+	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
+	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
+	if loadConnectionFactor >= 1 {
 		message.MType = OverutilizingI
 		return message, true
 	}
-	c.reference.loadAdjustmentMax = dim.MysqlCpu / 50
-	c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
-	c.reference.loadFactor = 1 - c.reference.loadAdjustment
+
+	//c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
+	//c.reference.loadFactor = 1 - c.reference.loadAdjustment
+	//c.reference.loadAdjustment = loadConnectionFactor
+	c.reference.loadFactor = loadConnectionFactor
 	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * 0.65)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
@@ -146,7 +151,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 	// flow:
 	// 1 get connections
 	// redolog
-	// gcache
+	// gcache or GCS Cache
 	//Innodb Bufferpool + params
 	// server
 	// galera provider
@@ -195,9 +200,9 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 		// set Probes timeouts
 		// MySQL
 		// Proxy
-		c.getProbesAndResources("mysql")
-		c.getProbesAndResources("proxy")
-		c.getProbesAndResources("monitor")
+		c.getProbesAndResources(FamilyTypeMysql)
+		c.getProbesAndResources(FamilyTypeProxy)
+		c.getProbesAndResources(FamilyTypeMonitor)
 	}
 	return c.filterByMySQLVersion()
 
@@ -247,18 +252,22 @@ func (c *Configurator) getGcache() {
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
-// TODO WARNING need to add the weight here
+// TODO Thinking...
+// For the moment i have disabled this global adjustment method and preferred to apply the tuning by case.
+// this because we cannot use the same weight in case of READ operation or Write operation in the different moment of the execution
+// What I mean here is that a write can be less expensive than complex read and as such the ADJ factor based on the available cpu cycles needs to take that in consideration
+// Unfortunately from were we are this is not possible to do. However it can become a dynamic parameter tuned by observation using tools such as Advisors.
 func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		return impedance
-	case 2:
+	case LoadTypeSomeWrites:
 		return impedance
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		return impedance
-	case 4:
+	case LoadTypeHeavyWrites:
 		return impedance
 	default:
 		return float32(c.reference.loadAdjustmentMax / 1)
@@ -287,13 +296,13 @@ func (c *Configurator) getConnectionBuffers() {
 func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(32768, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(131072, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(358400, 10)
 
 	}
@@ -304,13 +313,13 @@ func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
 func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(524288, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(1048576, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(1048576, 10)
 
 	}
@@ -320,13 +329,13 @@ func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
 
 func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(393216, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(707788, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(707788, 10)
 
 	}
@@ -336,13 +345,13 @@ func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
 
 func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		inParameter.Value = strconv.FormatInt(262144, 10)
-	case 2:
+	case LoadTypeSomeWrites:
 		inParameter.Value = strconv.FormatInt(524288, 10)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		inParameter.Value = strconv.FormatInt(1572864, 10)
-	case 4:
+	case LoadTypeHeavyWrites:
 		inParameter.Value = strconv.FormatInt(2097152, 10)
 
 	}
@@ -355,13 +364,13 @@ func (c *Configurator) calculateTmpTableFootprint(inParameter Parameter) int64 {
 	c.reference.tmpTableFootprint, _ = strconv.ParseInt(inParameter.Value, 10, 64)
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.03)
-	case 2:
+	case LoadTypeSomeWrites:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.01)
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.04)
-	case 4:
+	case LoadTypeHeavyWrites:
 		c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * 0.05)
 	}
 
@@ -406,11 +415,11 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 	var redologTotDimension int64
 
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.15 + (0.15 * c.reference.loadFactor)))
-	case 2:
+	case LoadTypeSomeWrites:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.2 + (0.2 * c.reference.loadFactor)))
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.3 + (0.3 * c.reference.loadFactor)))
 	default:
 		redologTotDimension = int64(float32(c.reference.idealBufferPoolDIm) * (0.15 + (0.15 * c.reference.loadFactor)))
@@ -435,7 +444,7 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Parameter) Parameter {
 
 	// transform redolog dimension into MB
-	dimension = int64(math.Ceil((float64(dimension) / 1025) / 1025))
+	dimension = int64(math.Ceil((float64(dimension) / 1024) / 1024))
 
 	switch {
 	case dimension < 500:
@@ -474,11 +483,11 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Paramete
 // adjust the gcache dimension based on the type of load
 func (c *Configurator) getGcacheLoad() float64 {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		return 1
-	case 2:
+	case LoadTypeSomeWrites:
 		return 1.15
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		return 1.2
 	default:
 		return 1
@@ -513,13 +522,13 @@ func (c *Configurator) getGroupReplicationParameters() {
 
 func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		parameter.Value = "True"
 		return parameter
-	case 2:
+	case LoadTypeSomeWrites:
 		parameter.Value = "True"
 		return parameter
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		parameter.Value = "False"
 		return parameter
 	default:
@@ -533,7 +542,7 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
 
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.90))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.95))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
 	c.reference.memoryLeftover -= bufferPool
@@ -596,13 +605,13 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 // Advisor thing
 func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		parameter.Value = "1400"
 		return parameter
-	case 2:
+	case LoadTypeSomeWrites:
 		parameter.Value = "1800"
 		return parameter
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		parameter.Value = "2000"
 		return parameter
 	default:
@@ -642,7 +651,7 @@ func (c *Configurator) paramServerThreadPool(parameter Parameter) Parameter {
 	cpus := c.reference.cpusMySQL / 1000
 
 	// we just set some limits to the cpu range
-	if cpus > 2 && cpus < 256 {
+	if cpus > 2 && cpus <= 256 {
 		threads = int(cpus) * 2
 	}
 
@@ -712,13 +721,13 @@ func (c *Configurator) getGaleraParameters() {
 
 func (c *Configurator) getGaleraSyncWait(parameter Parameter) Parameter {
 	switch c.reference.loadID {
-	case 1:
+	case LoadTypeMostlyReads:
 		parameter.Value = "0"
 		return parameter
-	case 2:
+	case LoadTypeSomeWrites:
 		parameter.Value = "3"
 		return parameter
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		parameter.Value = "3"
 		return parameter
 	default:
@@ -810,13 +819,13 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	memLeftOver := c.reference.memoryLeftover
 
 	var b bytes.Buffer
-	b.WriteString("\n\nTot Memory          = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
+	b.WriteString("\n\nTot Memory Bytes    = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
 	b.WriteString("Tot CPU                 = " + strconv.Itoa(reqCpu) + "\n")
 	b.WriteString("Tot Connections         = " + strconv.Itoa(reqConnections) + "\n")
 	b.WriteString("\n")
-	b.WriteString("memory assign to mysql  = " + strconv.FormatFloat(c.reference.memoryMySQL, 'f', 0, 64) + "\n")
-	b.WriteString("memory assign to Proxy  = " + strconv.FormatFloat(c.reference.memoryProxy, 'f', 0, 64) + "\n")
-	b.WriteString("memory assign to Monitor= " + strconv.FormatFloat(c.reference.memoryPmm, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to mysql Bytes   = " + strconv.FormatFloat(c.reference.memoryMySQL, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to Proxy Bytes   = " + strconv.FormatFloat(c.reference.memoryProxy, 'f', 0, 64) + "\n")
+	b.WriteString("memory assign to Monitor Bytes = " + strconv.FormatFloat(c.reference.memoryPmm, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to mysql  = " + strconv.FormatFloat(c.reference.cpusMySQL, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to Proxy  = " + strconv.FormatFloat(c.reference.cpusProxy, 'f', 0, 64) + "\n")
 	b.WriteString("cpus assign to Monitor= " + strconv.FormatFloat(c.reference.cpusPmm, 'f', 0, 64) + "\n")
@@ -852,13 +861,13 @@ func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 	memory := 0.0
 
 	switch family {
-	case "mysql":
+	case FamilyTypeMysql:
 		cpus = c.reference.cpusMySQL
 		memory = c.reference.memoryMySQL
-	case "proxy":
+	case FamilyTypeProxy:
 		cpus = c.reference.cpusPmm
 		memory = c.reference.memoryProxy
-	case "monitor":
+	case FamilyTypeMonitor:
 		cpus = c.reference.cpusPmm
 		memory = c.reference.memoryPmm
 	}
@@ -887,6 +896,20 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
 	mem := uint64(c.reference.memoryLeftover / 11)
+
+	//We need to consider that the cache stucture takes 50MB so we need to remove them from the available
+	mem = mem - GroupRepGCSCacheMemStructureCost
+
+	switch c.reference.loadID {
+	case LoadTypeMostlyReads:
+		mem = uint64(float64(mem) * 0.40)
+	case LoadTypeSomeWrites:
+		mem = uint64(float64(mem) * 0.60)
+	case LoadTypeEqualReadsWrites:
+		mem = uint64(float64(mem) * 0.80)
+	case LoadTypeHeavyWrites:
+		mem = uint64(float64(mem) * 1)
+	}
 
 	def, err := strconv.ParseUint(parameter.Default, 10, 64)
 	if err != nil {
@@ -981,11 +1004,11 @@ func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter
 func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter Parameter) Parameter {
 	val, _ := strconv.Atoi(parameter.Value)
 	switch c.request.LoadType.Id {
-	case 1:
+	case LoadTypeMostlyReads:
 		val = int(parameter.Max)
-	case 2:
+	case LoadTypeSomeWrites:
 		val = int(parameter.Max) / 2
-	case 3:
+	case LoadTypeEqualReadsWrites:
 		val = int(parameter.Min)
 
 	}

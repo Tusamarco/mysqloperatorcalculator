@@ -2,20 +2,54 @@ package mysqloperatorcalculator
 
 import (
 	"bytes"
+	"code.cloudfoundry.org/bytefmt"
+	"errors"
 )
 
 // ***********************************
 // Constants
 // ***********************************
-const OkI = 1001
-const ClosetolimitI = 2001
-const OverutilizingI = 3001
-const ErrorexecI = 5001
+const (
+	VERSION = "v1.5.0"
 
-const OkT = "Execution was successful and resources match the possible requests"
-const ClosetolimitT = "Execution was successful however resources are close to saturation based on the load requested"
-const OverutilizingT = "Resources not enough to cover the requested load "
-const ErrorexecT = "There is an error while processing. See details: %s"
+	OkI            = 1001
+	ClosetolimitI  = 2001
+	OverutilizingI = 3001
+	ErrorexecI     = 5001
+
+	OkT            = "Execution was successful and resources match the possible requests"
+	ClosetolimitT  = "Execution was successful however resources are close to saturation based on the load requested"
+	OverutilizingT = "Resources not enough to cover the requested load "
+	ErrorexecT     = "There is an error while processing. See details: %s"
+
+	LoadTypeMostlyReads      = 1
+	LoadTypeSomeWrites       = 2
+	LoadTypeEqualReadsWrites = 3
+	LoadTypeHeavyWrites      = 4
+
+	DimensionOpen = 999
+
+	FamilyTypeMysql   = "mysql"
+	FamilyTypeProxy   = "proxy"
+	FamilyTypeMonitor = "monitor"
+
+	GroupNameMySQLd    = "mysqld"
+	GroupNameProbes    = "probes"
+	GroupNameResources = "resources"
+	GroupNameHAProxy   = "haproxyConfig"
+
+	DbTypePXC              = "pxc"
+	DbTypeGroupReplication = "group_replication"
+
+	ResultOutputFormatJson  = "json"
+	ResultOutputFormatHuman = "human"
+
+	// groupreplication
+	GroupRepGCSCacheMemStructureCost = 52428800
+
+	//Connection / CPU adjustment factor
+	CpuConncetionMillFactor = 20
+)
 
 //*********************************
 // Structure definitions
@@ -62,10 +96,11 @@ type ConfigurationRequest struct {
 
 // Dimension used to represent the POD dimension
 type Dimension struct {
-	Id          int     `json:"id"`
-	Name        string  `json:"name"`
-	Cpu         int     `json:"cpu"`
-	Memory      float64 `json:"memory"`
+	Id          int    `json:"id"`
+	Name        string `json:"name"`
+	Cpu         int    `json:"cpu"`
+	Memory      string `json:"memory"`
+	MemoryBytes float64
 	MysqlCpu    int     `json:"mysqlCpu"`
 	ProxyCpu    int     `json:"proxyCpu"`
 	PmmCpu      int     `json:"pmmCpu"`
@@ -113,7 +148,7 @@ func (conf *Configuration) GetDimensionByID(id int) Dimension {
 		}
 
 	}
-	return Dimension{0, "", 0, 0, 0, 0, 0, 0, 0, 0}
+	return Dimension{0, "", 0, "", 0, 0, 0, 0, 0, 0, 0}
 }
 
 // GetLoadByID returns the Load Type using ID attribute
@@ -145,20 +180,20 @@ func (respM *ResponseMessage) GetMessageText(id int) string {
 // Init here is where we define the different options
 // it will be possible to increment the supported solutions adding here the items
 func (conf *Configuration) Init() {
-	conf.DBType = []string{"group_replication", "pxc"}
-	conf.Output = []string{"human", "json"}
+	conf.DBType = []string{DbTypeGroupReplication, DbTypePXC}
+	conf.Output = []string{ResultOutputFormatHuman, ResultOutputFormatJson}
 	conf.Dimension = []Dimension{
-		{1, "XSmall", 1000, 2, 600, 200, 100, 1.7, 0.200, 0.100},
-		{2, "Small", 2500, 4, 2000, 350, 150, 3.5, 0.400, 0.100},
-		{3, "Medium", 4500, 8, 3800, 500, 200, 7, 0.700, 0.300},
-		{4, "Large", 6500, 16, 5500, 700, 300, 14, 1.5, 0.500},
-		{5, "2XLarge", 8500, 32, 7400, 800, 300, 30, 1.5, 0.500},
-		{6, "4XLarge", 16000, 64, 14000, 1500, 500, 62, 1.5, 0.500},
-		{7, "8XLarge", 32000, 128, 29000, 2000, 1000, 126, 1.5, 0.500},
-		{8, "12XLarge", 48000, 192, 45000, 2000, 1000, 190, 1.5, 0.500},
-		{9, "16XLarge", 64000, 256, 60000, 3000, 1000, 253, 2, 1},
-		{10, "24XLarge", 96000, 384, 90000, 4000, 2000, 380, 2.5, 1.5},
-		{999, "Open request", 0, 0, 0, 0, 0, 0, 0, 0},
+		{1, "XSmall", 1000, "2GB", 2147483648, 600, 200, 100, 1825361100, 214748364, 107374182},
+		{2, "Small", 2500, "4GB", 4294967296, 2000, 350, 150, 3758096384, 429496729, 107374182},
+		{3, "Medium", 4500, "8GB", 8589934592, 3800, 500, 200, 7516192768, 751619276, 322122547},
+		{4, "Large", 6500, "16GB", 17179869184, 5500, 700, 300, 15032385536, 1610612736, 536870912},
+		{5, "2XLarge", 8500, "32GB", 34359738368, 7400, 800, 300, 32212254720, 1610612736, 536870912},
+		{6, "4XLarge", 16000, "64GB", 34359738368, 14000, 1500, 500, 66571993088, 1610612736, 536870912},
+		{7, "8XLarge", 32000, "128GB", 137438953472, 29000, 2000, 1000, 135291469824, 1610612736, 536870912},
+		{8, "12XLarge", 48000, "192GB", 206158430208, 45000, 2000, 1000, 204010946560, 1610612736, 536870912},
+		{9, "16XLarge", 64000, "256GB", 274877906944, 60000, 3000, 1000, 271656681472, 2147483648, 1073741824},
+		{10, "24XLarge", 96000, "384GB", 412316860416, 90000, 4000, 2000, 408021893120, 2684354560, 1610612736},
+		{DimensionOpen, "Open request", 0, "0GB", 0, 0, 0, 0, 0, 0, 0},
 	}
 	//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 	conf.LoadType = []LoadType{}
@@ -213,11 +248,13 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"table_open_cache_instances":  {"table_open_cache_instances", "configuration", "server", "4", "16", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		"tablespace_definition_cache": {"tablespace_definition_cache", "configuration", "server", "512", "256", 256, 524288, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 		//Adding values to match common advisors checks
-		"sync_binlog":                {"sync_binlog", "configuration", "server", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"sql_mode":                   {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,TRADITIONAL,STRICT_ALL_TABLES'", "0", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"binlog_expire_logs_seconds": {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"binlog_format":              {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
-		"thread_cache_size":          {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"sync_binlog":                       {"sync_binlog", "configuration", "server", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"sql_mode":                          {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,TRADITIONAL,STRICT_ALL_TABLES'", "0", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"binlog_expire_logs_seconds":        {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"binlog_format":                     {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"thread_cache_size":                 {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"global-connection-memory-limit":    {"global-connection-memory-limit", "configuration", "server", "18446744073709551615", "16777216", 4, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
+		"global-connection-memory-tracking": {"global-connection-memory-tracking", "configuration", "server", "false", "false", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 1, 0}}},
 	}
 
 	innodbGroup := map[string]Parameter{
@@ -279,9 +316,15 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	}
 
 	haproxyGroups := map[string]GroupObj{
-		"readinessProbe":        {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
-		"livenessProbe":         {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
-		"ha_connection_timeout": {"ha_connection_timeout", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "ha_connection_timeout", "5", "1000", 1000, 5000, MySQLVersions{}}}},
+		"readinessProbe": {"redinessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
+		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": Parameter{"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
+		"haproxyConfig": {"haproxy", map[string]Parameter{
+			"ha_connection_timeout": {"ha_connection_timeout", "", "haproxyConfig", "5", "1000", 1000, 5000, MySQLVersions{}},
+			"maxconn":               {"maxconn", "", "haproxyConfig", "4048", "2024", 1000, 5000, MySQLVersions{}},
+			"timeout_client":        {"timeout_client", "", "haproxyConfig", "28800", "14400", 1000, 50000, MySQLVersions{}},
+			"timeout_connect":       {"timeout_connect", "", "haproxyConfig", "100500", "100500", 1000, 500000, MySQLVersions{}},
+			"timeout_server":        {"timeout_server", "", "haproxyConfig", "28800", "14400", 1000, 50000, MySQLVersions{}},
+		}},
 		"resources": {"resources", map[string]Parameter{
 			"request_memory": {"memory", "request", "resources", "1", "1", 1, 2, MySQLVersions{}},
 			"request_cpu":    {"cpu", "request", "resources", "1000", "1000", 1000, 2000, MySQLVersions{}},
@@ -306,15 +349,15 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	mysqlGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
 	mysqlGroups["configuration_replica"] = GroupObj{"replica", replicaGroup}
 
-	if DBTypeRequest == "pxc" {
+	if DBTypeRequest == DbTypePXC {
 		mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
 	}
 
-	if DBTypeRequest == "group_replication" {
+	if DBTypeRequest == DbTypeGroupReplication {
 		mysqlGroups["configuration_groupReplication"] = GroupObj{"groupReplication", groupReplicationGroup}
 	}
 
-	families := map[string]Family{"mysql": {"mysql", mysqlGroups}, "proxy": {"haproxy", haproxyGroups}, "monitor": {"pmm", pmmGroups}}
+	families := map[string]Family{FamilyTypeMysql: {"mysql", mysqlGroups}, FamilyTypeProxy: {"haproxy", haproxyGroups}, FamilyTypeMonitor: {"pmm", pmmGroups}}
 
 	return families
 
@@ -357,13 +400,14 @@ func (pP *ProviderParam) Init() map[string]ProviderParam {
 	return pMap
 }
 
+// the function return all the groups in the family in one shot as byte buffer
 func (f Family) ParseGroupsHuman() bytes.Buffer {
 	var b bytes.Buffer
 
 	b.WriteString("[" + f.Name + "]" + "\n")
 	for key, group := range f.Groups {
-		b.WriteString("    [" + key + "]" + "\n")
-		pb := f.parseParamsHuman(group)
+		b.WriteString("  [" + key + "]" + "\n")
+		pb := f.parseParamsHuman(group, "    ")
 		b.Write(pb.Bytes())
 	}
 
@@ -371,17 +415,93 @@ func (f Family) ParseGroupsHuman() bytes.Buffer {
 
 }
 
-func (f Family) parseParamsHuman(group GroupObj) bytes.Buffer {
+// the function return the group by name as byte buffer
+func (f Family) ParseFamilyGroup(groupName string, padding string) (bytes.Buffer, error) {
+	var b bytes.Buffer
+	var err1 error
+	switch groupName {
+	case GroupNameMySQLd:
+		return f.parseMySQLDHuman(padding), err1
+	case GroupNameHAProxy:
+		return f.parseHumanProxy(padding), err1
+	case GroupNameProbes:
+		return f.parseProbesHuman(padding), err1
+	case GroupNameResources:
+		return f.parseResourcesHuman(padding), err1
+	default:
+		err1 = errors.New("ERROR: Invalid Group name " + groupName)
+		return b, err1
+	}
+
+}
+
+func (f Family) parseHumanProxy(padding string) bytes.Buffer {
+	var b bytes.Buffer
+	for key, group := range f.Groups {
+		if key != "readinessProbe" && key != "livenessProbe" && key != "resources" {
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+	return b
+}
+
+func (f Family) parseMySQLDHuman(padding string) bytes.Buffer {
+	var b bytes.Buffer
+
+	b.WriteString("[mysqld]" + "\n")
+	for key, group := range f.Groups {
+		if key != "readinessProbe" && key != "livenessProbe" && key != "resources" {
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+
+	return b
+
+}
+
+func (f Family) parseProbesHuman(padding string) bytes.Buffer {
+	var b bytes.Buffer
+
+	for key, group := range f.Groups {
+		if key == "readinessProbe" || key == "livenessProbe" {
+			b.WriteString("[" + key + "]" + "\n")
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+
+	return b
+
+}
+
+func (f Family) parseResourcesHuman(padding string) bytes.Buffer {
+	var b bytes.Buffer
+
+	for key, group := range f.Groups {
+		if key == "resources" {
+			b.WriteString("[" + key + "]" + "\n")
+			pb := f.parseParamsHuman(group, padding)
+			b.Write(pb.Bytes())
+		}
+	}
+
+	return b
+
+}
+
+func (f Family) parseParamsHuman(group GroupObj, padding string) bytes.Buffer {
 	var b bytes.Buffer
 	for key, param := range group.Parameters {
-		b.WriteString("      " + key + " = " + param.Value + "\n")
+		b.WriteString(padding + key + " = " + param.Value + "\n")
 	}
 
 	return b
 }
 
 func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension {
-	if dimension.Cpu > 0 && dimension.Memory > 0 {
+	if dimension.Cpu > 0 && dimension.MemoryBytes > 0 {
 		//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 		// first identify the range request fits in
 		calcDimension := conf.getDimensionForFreeCalculation(dimension)
@@ -389,9 +509,9 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 		dimension.MysqlCpu = int(float64(dimension.Cpu) * float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu))
 		dimension.ProxyCpu = int(float64(dimension.Cpu) * float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu))
 		dimension.PmmCpu = int(float64(dimension.Cpu) * float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu))
-		dimension.MysqlMemory = float64(dimension.Memory) * calcDimension.MysqlMemory / calcDimension.Memory
-		dimension.ProxyMemory = float64(dimension.Memory) * calcDimension.ProxyMemory / calcDimension.Memory
-		dimension.PmmMemory = float64(dimension.Memory) * calcDimension.PmmMemory / calcDimension.Memory
+		dimension.MysqlMemory = float64(dimension.MemoryBytes) * calcDimension.MysqlMemory / calcDimension.MemoryBytes
+		dimension.ProxyMemory = float64(dimension.MemoryBytes) * calcDimension.ProxyMemory / calcDimension.MemoryBytes
+		dimension.PmmMemory = float64(dimension.MemoryBytes) * calcDimension.PmmMemory / calcDimension.MemoryBytes
 
 	}
 
@@ -402,11 +522,11 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 func (conf *Configuration) getDimensionForFreeCalculation(dimension Dimension) Dimension {
 	var calcDimension Dimension
 	for i := 0; i < len(conf.Dimension)-1; i++ {
-		if i == 0 && (dimension.Cpu <= conf.Dimension[i].Cpu || dimension.Memory <= conf.Dimension[i].Memory) {
+		if i == 0 && (dimension.Cpu <= conf.Dimension[i].Cpu || dimension.MemoryBytes <= conf.Dimension[i].MemoryBytes) {
 			calcDimension = conf.Dimension[i]
 			break
 		} else if i > 0 && (InBetween(dimension.Cpu, conf.Dimension[i-1].Cpu, conf.Dimension[i].Cpu) ||
-			InBetween(int(dimension.Memory), int(conf.Dimension[i-1].Memory), int(conf.Dimension[i].Memory))) {
+			InBetween(int(dimension.MemoryBytes), int(conf.Dimension[i-1].MemoryBytes), int(conf.Dimension[i].MemoryBytes))) {
 			// we always pich the smaller set for more conservative approach
 			calcDimension = conf.Dimension[i-1]
 			break
@@ -430,4 +550,18 @@ func InBetween(i, min, max int) bool {
 func (conf *Configuration) getMySQLVersion() {
 	conf.Mysqlversions.Max = Version{8, 1, 0}
 	conf.Mysqlversions.Min = Version{8, 0, 32}
+}
+
+// =====================================================
+// Dimension section
+// =====================================================
+func (d *Dimension) ConvertMemoryToBytes(memoryHuman string) (float64, error) {
+	var memoryBytes float64
+	b, err1 := bytefmt.ToBytes(memoryHuman)
+	if err1 != nil {
+		return 0, err1
+	}
+	memoryBytes = float64(b)
+
+	return memoryBytes, err1
 }

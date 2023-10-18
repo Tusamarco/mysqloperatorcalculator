@@ -48,7 +48,7 @@ To get supported scenarios:
 
 
 to test:
- curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 2}, "loadtype":  {"id": 2}, "connections": 5}' http://127.0.0.1:8080/calculator
+ curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 2}, "loadtype":  {"id": 2}, "connections": 5,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator
 
 
 
