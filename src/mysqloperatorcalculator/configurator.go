@@ -165,7 +165,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 
 	// let us do a simple check to see if the number of connections is consuming too many resources.
 	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memoryMySQL
-	if conWeight < 0.40 {
+	if conWeight < 0.50 {
 
 		// Innodb Redolog
 		c.getInnodbRedolog()

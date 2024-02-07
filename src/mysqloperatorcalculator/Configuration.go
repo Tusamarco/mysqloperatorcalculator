@@ -47,8 +47,10 @@ const (
 	// groupreplication
 	GroupRepGCSCacheMemStructureCost = 52428800
 
-	//Connection / CPU adjustment factor
-	CpuConncetionMillFactor = 20
+	//Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
+	// if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
+	// if the number of CPUmill/CpuConncetionMillFactor > Connection asked we are overloading the platform
+	CpuConncetionMillFactor = 3
 )
 
 //*********************************
