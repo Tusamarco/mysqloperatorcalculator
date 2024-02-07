@@ -125,7 +125,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	// we first decide how many cycles want by cpu and then calculate the pressure
 	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
 	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
-	if loadConnectionFactor >= 1 {
+	if loadConnectionFactor > 1 {
 		message.MType = OverutilizingI
 		return message, true
 	}
@@ -1076,7 +1076,7 @@ func fillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBTyp
 		msg.MType = ClosetolimitI
 		msg.MText = "Request processed however not optimal details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
-	} else if pct > 0.66 {
+	} else if pct > 0.65 {
 		msg.MType = OkI
 		msg.MText = "Request ok, resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)

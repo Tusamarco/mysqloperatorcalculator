@@ -53,7 +53,7 @@ const (
 	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
 	if the number of CPUmill/CpuConncetionMillFactor > Connection asked we are overloading the platform
 	*/
-	CpuConncetionMillFactor = 3
+	CpuConncetionMillFactor = 2
 	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
 	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
 	*/
