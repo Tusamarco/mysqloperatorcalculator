@@ -85,8 +85,8 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))
 	}
 	connections := r.Connections
-	if connections < 50 && connections != 0 {
-		connections = 50
+	if connections < MinConnectionNumber && connections != 0 {
+		connections = MinConnectionNumber
 	}
 
 	ref := references{
@@ -165,7 +165,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 
 	// let us do a simple check to see if the number of connections is consuming too many resources.
 	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memoryMySQL
-	if conWeight < 0.40 {
+	if conWeight < ConnectionWeighPctLimit {
 
 		// Innodb Redolog
 		c.getInnodbRedolog()
@@ -426,6 +426,10 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 	}
 	// Store in reference the total redolog dimension
 	c.reference.innodbRedoLogDim = redologTotDimension
+	// we set the redolog capacity
+	parameterIbC := c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_redo_log_capacity"]
+	parameterIbC.Value = strconv.FormatInt(c.reference.innodbRedoLogDim, 10)
+	c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_redo_log_capacity"] = parameterIbC
 
 	//Calculate the number of file base on the dimension
 	parameter := c.families["mysql"].Groups["configuration_innodb"].Parameters["innodb_log_files_in_group"]
@@ -513,7 +517,7 @@ func (c *Configurator) getGroupReplicationParameters() {
 	group.Parameters["loose_group_replication_member_expel_timeout"] = c.paramGroupReplicationMemberExpelTimeout(group.Parameters["loose_group_replication_member_expel_timeout"])
 	group.Parameters["loose_group_replication_autorejoin_tries"] = c.paramGroupReplicationAutorejoinTries(group.Parameters["loose_group_replication_autorejoin_tries"])
 	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageCacheSize(group.Parameters["loose_group_replication_communication_max_message_size"])
-	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
+	//	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
 	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
 	//group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
 
