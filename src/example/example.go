@@ -18,16 +18,6 @@ func main() {
 
 }
 
-//get all the supported platforms and dimensions as an object that you can transform or not:
-//type Configuration struct {
-//	DBType        []string      `json:"dbtype"`
-//	Dimension     []Dimension   `json:"dimension"`
-//	LoadType      []LoadType    `json:"loadtype"`
-//	Connections   []int         `json:"connections"`
-//	Output        []string      `json:"output"`
-//	Mysqlversions MySQLVersions `json:"mysqlversions"`
-//}
-
 func testSupportedJson(supported MO.Configuration, calculator MO.MysqlOperatorCalculator) {
 	output, err := json.MarshalIndent(&supported, "", "  ")
 	if err != nil {
