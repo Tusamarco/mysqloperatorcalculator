@@ -62,6 +62,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	error, message, Families := moc.getCalculateInt()
 
 	if moc.IncomingRequest.Connections == 0 {
+		moc.IncomingRequest.Connections = 50
 		for message.MType != OverutilizingI {
 			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections + 10
 			error, message, Families = moc.getCalculateInt()
@@ -69,6 +70,18 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 
 		moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
 		error, message, Families = moc.getCalculateInt()
+	}
+
+	if message.MType == OverutilizingI {
+		originalConnections := moc.IncomingRequest.Connections
+		for message.MType == OverutilizingI {
+			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
+			//log.Debug("Recalculating connections " + strconv.Itoa(moc.IncomingRequest.Connections))
+			error, message, Families = moc.getCalculateInt()
+		}
+		message.MText = message.MText + "\n!!!! Connections recalculated Original: " + strconv.Itoa(originalConnections) + " New Value " + strconv.Itoa(moc.IncomingRequest.Connections) + " plus additional 2 for administrative use !!!\n\n"
+		message.MName = message.GetMessageText(ConnectionRecalculated)
+		message.MType = ConnectionRecalculated
 	}
 
 	return error, message, Families
