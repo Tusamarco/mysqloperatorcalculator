@@ -1077,7 +1077,7 @@ func fillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBTyp
 		msg.MType = ClosetolimitI
 		msg.MText = "Request processed however not optimal details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
-	} else if pct > 0.66 {
+	} else if pct > 0.65 {
 		msg.MType = OkI
 		msg.MText = "Request ok, resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
