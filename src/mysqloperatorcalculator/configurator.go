@@ -125,7 +125,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	// we first decide how many cycles want by cpu and then calculate the pressure
 	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
 	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
-	if loadConnectionFactor >= 1 {
+	if loadConnectionFactor > 1 {
 		message.MType = OverutilizingI
 		return message, true
 	}
