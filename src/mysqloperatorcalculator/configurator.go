@@ -868,7 +868,7 @@ func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 		cpus = c.reference.cpusMySQL
 		memory = c.reference.memoryMySQL
 	case FamilyTypeProxy:
-		cpus = c.reference.cpusPmm
+		cpus = c.reference.cpusProxy
 		memory = c.reference.memoryProxy
 	case FamilyTypeMonitor:
 		cpus = c.reference.cpusPmm
