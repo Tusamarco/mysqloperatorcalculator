@@ -118,12 +118,12 @@ When retrieving the supported dimensions you will notice a special group `999`:
     }
 ```
 This is the ID you should use for your request, plus the values for CPU and Memory ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
 The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
 From version `1.5.0` we also support the auto calculation of the maximum number of supported connections. 
 To trigger it just pass 0 as the connection value when using the Open Reuest options ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 0,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator``
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 0,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator``
 
 Let see each section one by one.
 #### Dimension
@@ -175,7 +175,7 @@ When retrieving the supported dimensions you will notice a special group `999`:
     }
 ```
 This is the ID you should use for your request, plus the values for CPU and Memory ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":2.5}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
+` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
 The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
 
