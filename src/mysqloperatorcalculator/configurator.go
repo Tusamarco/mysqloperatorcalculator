@@ -859,6 +859,7 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 
 }
 
+// Here is where we assign the initial resources for the calculation
 func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 	cpus := 0.0
 	memory := 0.0
