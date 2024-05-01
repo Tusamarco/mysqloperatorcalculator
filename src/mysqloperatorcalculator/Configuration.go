@@ -49,11 +49,31 @@ const (
 	// groupreplication
 	GroupRepGCSCacheMemStructureCost = 52428800
 
+	/* Minlimit is the % of memory assigned to Innodb buffer pool compared to the total memory assigned to mysql
+	We have different min limit per type of replication (galera and Group replication) because the different impact of the internal cache.
+	In GR the certification cache is suffering of an issue. In short the certification cache is clean/flushed on commit, but if the operation is a long one like insert into A from select * from b ;
+	and we have large dataset, this may cause the cache buffer to be very large and causing issues like swap or OOM kill.
+	While we cannot prevent this to happen, we need to consider the possible impact of it.
+	Also other caches used by GR and more frequently cleanup are causing higher memory consumption than galera.
+	as such we need to allocate less memory to innodb and more to buffers.
+	By consequence the % of innodb memory for galera is higher than GR
+	*/
+	MinLimitPXC = 0.55
+	MinLimitGR  = 0.45
+
 	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
 	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
 	if the number of CPUmill/CpuConncetionMillFactor > Connection asked we are overloading the platform
+	We hace 3 different load factors:
+	- mainly read
+	- read/write 80/20
+	- read/write 50/50
 	*/
-	CpuConncetionMillFactor = 2
+	// TODO move this to configuration to easy tune
+	CpuConncetionMillFactorRead           = 2
+	CpuConncetionMillFactorReadWriteLight = 4
+	CpuConncetionMillFactorReadWriteEqual = 6
+	CpuConncetionMillFactorReadWriteHeavy = 10
 	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
 	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
 	*/
@@ -268,8 +288,8 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"binlog_expire_logs_seconds":        {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
 		"binlog_format":                     {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
 		"thread_cache_size":                 {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
-		"global-connection-memory-limit":    {"global-connection-memory-limit", "configuration", "server", "18446744073709551615", "16777216", 4, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
-		"global-connection-memory-tracking": {"global-connection-memory-tracking", "configuration", "server", "false", "false", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
+		"global-connection-memory-limit":    {"global_connection_memory_limit", "configuration", "server", "18446744073709551615", "16777216", 4, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
+		"global-connection-memory-tracking": {"global_connection_memory_tracking", "configuration", "server", "false", "false", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{8, 4, 0}}},
 	}
 
 	innodbGroup := map[string]Parameter{

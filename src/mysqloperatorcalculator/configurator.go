@@ -121,13 +121,9 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 
 	c.reference = &ref
 
-	// set load factors based on the incoming request
-	// we first decide how many cycles want by cpu and then calculate the pressure
-	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
-	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
-	if loadConnectionFactor > 1 {
-		message.MType = OverutilizingI
-		return message, true
+	loadConnectionFactor, responseMessage, b, done := c.calculateLoadConnectionFactor(dim, message)
+	if done {
+		return responseMessage, b
 	}
 
 	//c.reference.loadAdjustment = c.getAdjFactor(loadConnectionFactor)
@@ -143,6 +139,33 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	c.providerParams = p.Init()
 
 	return message, false
+}
+
+func (c *Configurator) calculateLoadConnectionFactor(dim Dimension, message ResponseMessage) (float32, ResponseMessage, bool, bool) {
+	// set load factors based on the incoming request
+	// we first decide how many cycles want by cpu and then calculate the pressure
+	CpuConncetionMillFactor := 0
+
+	switch c.reference.loadID {
+	case LoadTypeMostlyReads:
+		CpuConncetionMillFactor = CpuConncetionMillFactorRead
+	case LoadTypeSomeWrites:
+		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteLight
+	case LoadTypeEqualReadsWrites:
+		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteEqual
+	case LoadTypeHeavyWrites:
+		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteHeavy
+	default:
+		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteLight
+	}
+
+	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
+	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
+	if loadConnectionFactor > 1 {
+		message.MType = OverutilizingI
+		return 0, message, true, true
+	}
+	return loadConnectionFactor, ResponseMessage{}, false, false
 }
 
 func (c *Configurator) ProcessRequest() map[string]Family {
@@ -589,8 +612,14 @@ func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter Parameter) Parame
 func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 
 	threads := 4
+	adjValue := 1.0
 	if (c.reference.cpus / 1000) > 4 {
-		valore := float64(c.reference.cpusMySQL/1000) * c.reference.gcacheLoad
+		if c.request.DBType == "pxc" {
+			adjValue = c.reference.gcacheLoad
+		} else {
+			adjValue = c.reference.gcscacheLoad
+		}
+		valore := float64(c.reference.cpusMySQL/1000) * adjValue
 		threads = int(math.Ceil(valore))
 	}
 
@@ -820,6 +849,7 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	temTableFootprint := c.reference.tmpTableFootprint
 	connectionMem := c.reference.connBuffersMemTot
 	memLeftOver := c.reference.memoryLeftover
+	loadFactor := float64(c.reference.loadFactor)
 
 	var b bytes.Buffer
 	b.WriteString("\n\nTot Memory Bytes    = " + strconv.FormatFloat(totMeme, 'f', 0, 64) + "\n")
@@ -854,8 +884,12 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	b.WriteString("\n")
 	b.WriteString("memory leftover         = " + strconv.FormatInt(memLeftOver, 10) + "\n")
 	b.WriteString("\n")
+	b.WriteString("Load factor         = " + strconv.FormatFloat(loadFactor, 'f', 2, 64) + "\n")
 
-	return fillResponseMessage(bpPct, responseMsg, b, c.request.DBType)
+	b.WriteString("Load resource factor= " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
+	b.WriteString("\n")
+
+	return c.FillResponseMessage(bpPct, responseMsg, b, c.request.DBType)
 
 }
 
@@ -1061,11 +1095,11 @@ func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter
 	return parameter
 }
 
-func fillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBType string) (ResponseMessage, bool) {
+func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBType string) (ResponseMessage, bool) {
 	overUtilizing := false
-	minlimit := float64(0.45)
+	minlimit := float64(MinLimitPXC)
 	if DBType == "group_replication" {
-		minlimit = float64(0.34)
+		minlimit = float64(MinLimitGR)
 	}
 
 	if pct < minlimit {
