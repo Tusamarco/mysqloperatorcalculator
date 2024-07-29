@@ -74,7 +74,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 
 	if message.MType == OverutilizingI {
 		originalConnections := moc.IncomingRequest.Connections
-		for message.MType == OverutilizingI {
+		for message.MType == OverutilizingI && moc.IncomingRequest.Connections > MinConnectionNumber {
 			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
 			//log.Debug("Recalculating connections " + strconv.Itoa(moc.IncomingRequest.Connections))
 			error, message, Families = moc.getCalculateInt()
