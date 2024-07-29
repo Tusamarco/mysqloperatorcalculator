@@ -590,7 +590,7 @@ func InBetween(i, min, max int) bool {
 
 // TODO	***MySQL Supported version (testing is with hardcoded then we need to query check.percona.com ***
 func (conf *Configuration) getMySQLVersion() {
-	conf.Mysqlversions.Max = Version{8, 4, 0}
+	conf.Mysqlversions.Max = Version{9, 0, 1}
 	conf.Mysqlversions.Min = Version{8, 0, 32}
 }
 
