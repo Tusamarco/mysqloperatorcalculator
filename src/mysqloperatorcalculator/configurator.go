@@ -968,7 +968,7 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
 	c.reference.gcscache = c.reference.gcscacheFootprint
-	c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * 6
+	c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * GroupReplicationCertificationMultiplierFactor
 	c.reference.memoryLeftover -= c.reference.gcscacheFootprint
 
 	return parameter
