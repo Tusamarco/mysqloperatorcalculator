@@ -267,12 +267,12 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	// to add new we can add here the new one then create a proper method to handle the calculation
 
 	replicaGroup := map[string]Parameter{
-		"replica_compressed_protocol": {"replica_compressed_protocol", "configuration", "replication", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{9, 1, 0}}},
-		"replica_exec_mode":           {"replica_exec_mode", "configuration", "replication", "STRICT", "STRICT", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{9, 1, 0}}},
-		"replica_parallel_type":       {"replica_parallel_type", "configuration", "replication", "LOGICAL_CLOCK", "LOGICAL_CLOCK", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{9, 1, 0}}},
+		"replica_compressed_protocol": {"replica_compressed_protocol", "configuration", "replication", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
+		"replica_exec_mode":           {"replica_exec_mode", "configuration", "replication", "STRICT", "STRICT", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
+		"replica_parallel_type":       {"replica_parallel_type", "configuration", "replication", "LOGICAL_CLOCK", "LOGICAL_CLOCK", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
 		//TODO add calculation
-		"replica_parallel_workers":      {"replica_parallel_workers", "configuration", "replication", "4", "4", 0, 1024, MySQLVersions{Version{8, 0, 30}, Version{9, 1, 0}}},
-		"replica_preserve_commit_order": {"replica_preserve_commit_order", "configuration", "replication", "ON", "ON", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{9, 1, 0}}},
+		"replica_parallel_workers":      {"replica_parallel_workers", "configuration", "replication", "4", "4", 0, 1024, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
+		"replica_preserve_commit_order": {"replica_preserve_commit_order", "configuration", "replication", "ON", "ON", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
 	}
 
 	connectionGroup := map[string]Parameter{
