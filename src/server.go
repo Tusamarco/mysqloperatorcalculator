@@ -84,7 +84,8 @@ func handleRequestCalculator(writer http.ResponseWriter, request *http.Request) 
 	switch request.Method {
 	case "GET":
 		err = handleGetCalculate(writer, request)
-
+	case "POST":
+		err = handleGetCalculate(writer, request)
 	}
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
@@ -114,9 +115,9 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	}
 	body := make([]byte, len)
 	request.Body.Read(body)
-	//var buffer bytes.Buffer
-	//buffer.Write(body)
-	//println(buffer.String())
+	var buffer bytes.Buffer
+	buffer.Write(body)
+	println(buffer.String())
 
 	// we need to process the request and get the values
 	err1 := json.Unmarshal(body, &ConfRequest)
