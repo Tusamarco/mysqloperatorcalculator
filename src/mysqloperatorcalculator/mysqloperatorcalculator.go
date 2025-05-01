@@ -210,7 +210,7 @@ func (moc *MysqlOperatorCalculator) GetJSONOutput(message ResponseMessage, ConfR
 	// Concatenate all into a single output
 	var b bytes.Buffer
 	b.WriteString(`{"request": {`)
-	b.WriteString(`,"message":`)
+	b.WriteString(`"message":`)
 	b.Write(messageStream)
 	b.WriteString(`,"incoming":`)
 	b.Write(processedRequest)
