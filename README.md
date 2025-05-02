@@ -506,6 +506,49 @@ You must use them and be sure they are correctly set in your CR or all the work 
   
 Resources are the cpu/memory dimension you should set. You will always have a LIMIT and a REQUEST for the resources. Keep in mind that whatever will push your pod above the memory limit will IMMEDIATELY trigger the OOM killer :) not a nice thing to have. 
 
+From version `1.8.0` calculator will allow you to ask for resources base on the number of connections, using special group `998`.
+Calculator will base this calculation taking into account ONLY the pre-defined dimensions (see: curl -i -X GET  http://127.0.0.1:8080/supported).
+It will identify which of them will better match the needs and will return it.
+Your request should be as follows:
+`curl -i -X GET -H "Content-Type: application/json" -d '{"output":"json","dbtype":"pxc", "dimension": {"id": 998}, "loadtype": {"id": 1},
+ "connections":600,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
+Which will return a message like:
+```json
+{"request": {"message":{
+  "type": 7001,
+  "name": "All resources have been recalculated to match the requested connections",
+  "text": "Request ok, resources details: \n\nTot Memory Bytes    = 17179869184\nTot CPU                 = 6500\nTot Connections         = 600\n\nmemory assign to mysql Bytes   = 15032385536\nmemory assign to Proxy Bytes   = 1610612736\nmemory assign to Monitor Bytes = 536870912\ncpus assign to mysql  = 5500\ncpus assign to Proxy  = 700\ncpus assign to Monitor= 300\n\nGcache mem on disk      = 2425695488\nGcache mem Footprint    = 727708647\n\nTmp Table mem Footprint = 503316\nBy connection mem tot   = 532626612\n\nInnodb Bufferpool       = 13083447763\n% BP over av memory     = 0.76\n\nmemory leftover         = 688602514\n\nLoad factor         = 0.66\nLoad resource factor= 0.76\n\n\n!!!! Resources calculated to match connections request\n\n"
+},"incoming":{
+  "dbtype": "pxc",
+  "dimension": {
+    "id": 998,
+    "name": "Open request by Connection",
+    "cpu": 0,
+    "memory": "0GB",
+    "MemoryBytes": 0,
+    "mysqlCpu": 0,
+    "proxyCpu": 0,
+    "pmmCpu": 0,
+    "mysqlMemory": 0,
+    "proxyMemory": 0,
+    "pmmMemory": 0
+  },
+  "loadtype": {
+    "id": 1,
+    "name": "",
+    "example": ""
+  },
+  "connections": 600,
+  "output": "json",
+  "mysqlversion": {
+    "major": 8,
+    "minor": 0,
+    "patch": 33
+  }
+```
+
+
+
 # Module
 MySQLOperatorCalculator is also available as module.
 This is it you can include it in your code and query it directly getting back objects to browse or Json.
