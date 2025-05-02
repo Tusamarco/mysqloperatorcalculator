@@ -124,7 +124,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	if err1 != nil {
 		println(err1.Error())
 	}
-	if ConfRequest.Dimension.MemoryBytes == 0 {
+	if ConfRequest.Dimension.MemoryBytes == 0 && ConfRequest.Dimension.Id != 998 {
 		var errConv error
 		ConfRequest.Dimension.MemoryBytes, errConv = ConfRequest.Dimension.ConvertMemoryToBytes(ConfRequest.Dimension.Memory)
 		if errConv != nil {
@@ -163,7 +163,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	// initialize the configurator (where all the things happens)
 	var moc MO.MysqlOperatorCalculator
-	moc.Init(ConfRequest)
+	moc.Init(ConfRequest, conf)
 
 	err1, responseMsg, familiesCalculated := moc.GetCalculate()
 	if err1 != nil {

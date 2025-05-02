@@ -14,11 +14,12 @@ import (
 type MysqlOperatorCalculator struct {
 	IncomingRequest ConfigurationRequest
 	configurator    Configurator
+	Conf            Configuration
 }
 
-func (moc *MysqlOperatorCalculator) Init(inR ConfigurationRequest) {
+func (moc *MysqlOperatorCalculator) Init(inR ConfigurationRequest, conf Configuration) {
 	moc.IncomingRequest = inR
-
+	moc.Conf = conf
 }
 
 func (m *MysqlOperatorCalculator) GetSupportedLayouts() Configuration {
@@ -30,6 +31,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	var responseMsg ResponseMessage
 	var families map[string]Family
 	var ConfRequest ConfigurationRequest
+	calculateByConnection := false
 
 	ConfRequest = moc.IncomingRequest
 
@@ -47,19 +49,43 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 		}
 		return nil, responseMsg, families
 
-	} else if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
+	}
+
+	if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
 		err := fmt.Errorf("DB Type is not correct Supported Types are : %s, %s ", DbTypePXC, DbTypeGroupReplication)
 		if err != nil {
 			return err, responseMsg, families
 		}
 		return nil, responseMsg, families
+	}
+
+	//if we pass open calculation by connection (id = 998 )  and a valid number for connection (>50) then we will
+	//loop by the available dimensions to identify which is matching the number of connections
+	if ConfRequest.Dimension.Id == 998 {
+		if moc.IncomingRequest.Connections < 50 {
+			moc.IncomingRequest.Connections = 50
+		}
+		log.Info("Calculating by number of connections")
+		moc.IncomingRequest.Dimension = moc.Conf.Dimension[0]
+		calculateByConnection = true
 
 	}
 
 	// Internally if Connection dimension is NOT passed we will loop in a very rude way to calculate the maximum
 	// number of supported calculation
-
 	error, message, Families := moc.getCalculateInt()
+	if calculateByConnection {
+		error, message, Families = moc.getCalculateInt()
+		idx := 0
+		for message.MType == OverutilizingI {
+			idx += 1
+			moc.IncomingRequest.Dimension = moc.Conf.Dimension[idx]
+			error, message, Families = moc.getCalculateInt()
+		}
+		message.MText = message.MText + "\n!!!! Resources calculated to match connections request\n\n"
+		message.MName = message.GetMessageText(ResourcesRecalculated)
+		message.MType = ResourcesRecalculated
+	}
 
 	if moc.IncomingRequest.Connections == 0 {
 		moc.IncomingRequest.Connections = 50

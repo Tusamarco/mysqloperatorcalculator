@@ -17,19 +17,22 @@ const (
 	OverutilizingI         = 3001
 	ErrorexecI             = 5001
 	ConnectionRecalculated = 6001
+	ResourcesRecalculated  = 7001
 
 	OkT                       = "Execution was successful and resources match the possible requests"
 	ClosetolimitT             = "Execution was successful however resources are close to saturation based on the load requested"
 	OverutilizingT            = "Resources not enough to cover the requested load "
 	ErrorexecT                = "There is an error while processing. See details: %s"
 	ConnectionRecalculatedTxt = "The number of connection has been recalculated to match the available resources"
+	ResourcesRecalculatedTxt  = "All resources have been recalculated to match the requested connections"
 
 	LoadTypeMostlyReads      = 1
 	LoadTypeSomeWrites       = 2
 	LoadTypeEqualReadsWrites = 3
 	LoadTypeHeavyWrites      = 4
 
-	DimensionOpen = 999
+	DimensionOpen       = 999
+	ConnectionDimension = 998
 
 	FamilyTypeMysql   = "mysql"
 	FamilyTypeProxy   = "proxy"
@@ -218,6 +221,8 @@ func (respM *ResponseMessage) GetMessageText(id int) string {
 		return ErrorexecT
 	case ConnectionRecalculated:
 		return ConnectionRecalculatedTxt
+	case ResourcesRecalculated:
+		return ResourcesRecalculatedTxt
 
 	}
 	return "Unhandled message ID"
@@ -239,7 +244,8 @@ func (conf *Configuration) Init() {
 		{8, "12XLarge", 48000, "192GB", 206158430208, 45000, 2000, 1000, 204010946560, 1610612736, 536870912},
 		{9, "16XLarge", 64000, "256GB", 274877906944, 60000, 3000, 1000, 271656681472, 2147483648, 1073741824},
 		{10, "24XLarge", 96000, "384GB", 412316860416, 90000, 4000, 2000, 408021893120, 2684354560, 1610612736},
-		{DimensionOpen, "Open request", 0, "0GB", 0, 0, 0, 0, 0, 0, 0},
+		{DimensionOpen, "Open request by resources", 0, "0GB", 0, 0, 0, 0, 0, 0, 0},
+		{ConnectionDimension, "Open request by Connection", 0, "0GB", 0, 0, 0, 0, 0, 0, 0},
 	}
 	//		{999, "Open request", 0, 0, 0.875, 0.09375, 0.00025, 0.96875, 0.0234375, 0.0078125},
 	conf.LoadType = []LoadType{}
