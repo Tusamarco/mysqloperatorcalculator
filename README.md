@@ -565,7 +565,7 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	myRequest.Connections = 70
 	myRequest.Mysqlversion = MO.Version{8, 0, 33}
 
-	moc.Init(myRequest)
+	moc.Init(ConfRequest, conf)
 	error, responseMessage, families := moc.GetCalculate()
 	if error != nil {
 		print(error.Error())
