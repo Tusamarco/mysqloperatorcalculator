@@ -270,7 +270,17 @@ func (c *Configurator) filterByMySQLVersion() map[string]Family {
 // calculate gcache effects on memory (estimation)
 func (c *Configurator) getGcache() {
 	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
-	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
+	// Calculating the Gcache footprint based on the load factor and load type
+	gcacheFootPrintFactor := 0.3
+	switch c.reference.loadID {
+	case 1:
+		gcacheFootPrintFactor = gcacheFootPrintFactor
+	case 2:
+		gcacheFootPrintFactor = 0.4
+	case 3:
+		gcacheFootPrintFactor = 0.6
+	}
+	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * gcacheFootPrintFactor))
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
