@@ -292,8 +292,8 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	}
 	//TODO !!! Review thread_pool_size & thread_cache_size !!!
 	serverGroup := map[string]Parameter{
-		"max_connections":             {"max_connections", "configuration", "server", "50", "2", 2, 65536, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"thread_pool_size":            {"thread_pool_size", "configuration", "server", "2", "2", 2, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"max_connections": {"max_connections", "configuration", "server", "50", "2", 2, 65536, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		//		"thread_pool_size":            {"thread_pool_size", "configuration", "server", "2", "2", 2, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"table_definition_cache":      {"table_definition_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"table_open_cache":            {"table_open_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"thread_stack":                {"thread_stack", "configuration", "server", "1048576", "1048576", 131072, 393216, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
