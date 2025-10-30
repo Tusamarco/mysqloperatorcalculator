@@ -1,28 +1,27 @@
 # MySQL Calculator for Operator
 ## Why 
-With the advent of Kubernets (k8s), had become incresingly common to deploy RBDMS on K8s supported platforms. 
-However the way MySQL and also the other components should be set and tune is very different from what is the "standard" way. 
-To facilitate the setup and configuration of MYSQL and related, I have wrote this small tool that works as a simple service and that can be query directly 
+With the advent of Kubernetes (k8s), it had become increasingly common to deploy RDBMS on K8s supported platforms.
+However the way MySQL and also the other components should be set and tune is very different from what is the "standard" way.
+To facilitate the setup and configuration of MySQL and related, I have wrote this small tool that works as a simple service and that can be query directly 
 from your application.
 
-## How 
-The tools is a simple service that will listen wherever you run it. 
-The calculation is done considering many different parameters combinations. 
-The Parameters are:
+## How
+The tools is a simple service that will listen wherever you run it.
+The calculation is done considering many different parameter combinations.
+The parameters are:
 - Dimensions (CPU/Memory)
 - Kind of load (simple reads with very minimal writes say less than 5%; still reads but higher writes less 20%; kind of 50/50% load in reads and writes).
 - Number of connections
 
-While the fisrst two are fix and passed by the tool, the number of connection is an open variable, and you can set it to any number considering the minum as _50 connections_. 
+While the first two are fixed and passed by the tool, the number of connection is an open variable, and you can set it to any number considering the minimum _50 connections_.
 It doesn't make too much sense to have a RDBMS with less than that, don't you think? 
-
 
 ### What I should do 
 Ok, so what should I do to run it?
 After compilation run it as
 `./mysqloperatorcalculator -address=<ip> -port=<port>`
 
-if you omit IP it will listen on all available IP, if you omit the port it will use 8080.
+if you omit IP it will listen on all available IPs, if you omit the port it will use 8080.
 
 The first action is to discover what is currently supported dimensions.
 To test it you can do :
@@ -30,7 +29,7 @@ To test it you can do :
 IE
 ` curl -i -X GET  http://127.0.0.1:8080/supported`
 
-The result you will get is in Json formatted to make it easier also for humans. 
+The result you will get is in json formatted to make it easier also for humans. 
 ```
   curl -i -X GET  http://127.0.0.1:8080/supported
 HTTP/1.1 200 OK
@@ -101,7 +100,7 @@ Transfer-Encoding: chunked
 
 }
 ```
-From version `1.1.0` we support also open requests, this means you can pass the values for memory and cpu in open forms.
+From version `1.1.0` we support also open requests, this means you can pass the values for Memory and CPU in open forms.
 When retrieving the supported dimensions you will notice a special group `999`:
 ```json
    {
@@ -118,32 +117,32 @@ When retrieving the supported dimensions you will notice a special group `999`:
     }
 ```
 This is the ID you should use for your request, plus the values for CPU and Memory ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
+`curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
-The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
+The calculator will automatically adjust the memory for MySQL, Proxy and PMM in relation to what you are passing.
 From version `1.5.0` we also support the auto calculation of the maximum number of supported connections. 
-To trigger it just pass 0 as the connection value when using the Open Reuest options ie:
-` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 0,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator``
+To trigger it just pass 0 as the connection value when using the Open Request options, ie:
+`curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 0,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
 Let see each section one by one.
 #### Dimension
 - id : is what you will use to ASK the calculation
-- name : just a human reference, to make easier for us 
-- cpu : the TOTAL maximum available cpu dimension we will have with this solution, to share with all pods
+- name : just a human reference, to make it easier for us 
+- cpu : the TOTAL maximum available CPU dimension we will have with this solution, to share with all pods
 - memory : same as CPU but for memory
 - <Resource>[cpu/memory] : the segment that will be associated to the resources. 
 
 #### LoadType
 - id : again what you will use to ask for the calculation
-- name : Human reference
+- name : human reference
 - example : well ... just to better clarify 
 
 ### Connections
-Here I just report some example, however connections can be any number from 50 up. If you pass less than 50, th evalue will be adjusted to 50, period. 
+Here I just report some example, however connections can be any number starting from 50. If you pass less than 50, the value will be adjusted to 50, period.
 
 ### Output
 - json : well it is json you can use in your application 
-- human : will give you some kindish of my.cnf output plus more information on top. You can use to easily check the output and/or cut and paste in a my.cnf
+- human : will give you some kind of my.cnf output plus more information on top. You can use to easily check the output and/or cut and paste in a my.cnf
 
 ### MySQL Version
 MySQL versions report the range of supported version by configurator. Inside that window the parameters settings and/or presence may change.
@@ -177,7 +176,7 @@ When retrieving the supported dimensions you will notice a special group `999`:
 This is the ID you should use for your request, plus the values for CPU and Memory ie:
 ` curl -i -X GET -H "Content-Type: application/json" -d '{"output":"human","dbtype":"pxc", "dimension":  {"id": 999,"cpu":4000,"memory":"2.5G"}, "loadtype":  {"id": 2}, "connections": 100,"mysqlversion":{"major":8,"minor":0,"patch":33}}' http://127.0.0.1:8080/calculator`
 
-The calculator will automatically adjust the memory for MySQL, Proxy and Pmm monitoring in relation to what you are passing.
+The calculator will automatically adjust the memory for MySQL, Proxy and PMM in relation to what you are passing.
 
 Your (long) output will look like this:
 ```json
@@ -435,7 +434,7 @@ The first section you will see is `message`
 ```
 it will provide some information about the results and will tell you if the usage is fully OK, if close to the limit or worse scenario, is not possible 
 to use it given resource limitation. 
-In this last case toy __will not__ have the other sections. 
+In this last case tool _will not_ have the other sections.
 
 #### Incoming
 The incoming section is a summary of the request you have sent.
@@ -496,17 +495,17 @@ It is quite self explanatory, but let us review it:
 - name : is the variable name
 - section : the name of the section (for future use)
 - group : the group to who it belongs, in this case InnoDB configuration
-- value : __THIS IS__ what you are interested in. This is the value you should take for your prcessing.
+- value : _THIS IS_ what you are interested in. This is the value you should take for your prcessing.
 - default/min/max : are used for calculation and reference.
   
 ### livenessProbe / readinessProbe / resources
-These three Groups are __EXTREMELY__ important.
-The values for the __probes__, are calculated to help you to prevent Kubernetes to kill a perfectly working but busy Pod.
+These three Groups are _EXTREMELY_ important.
+The values for the _probes_ are calculated to help you to prevent Kubernetes to kill a perfectly working but busy Pod.
 You must use them and be sure they are correctly set in your CR or all the work done will be useless. 
-  
+
 Resources are the cpu/memory dimension you should set. You will always have a LIMIT and a REQUEST for the resources. Keep in mind that whatever will push your pod above the memory limit will IMMEDIATELY trigger the OOM killer :) not a nice thing to have. 
 
-From version `1.8.0` calculator will allow you to ask for resources base on the number of connections, using special group `998`.
+From version `1.8.0` calculator will allow you to ask for resources based on the number of connections, using special group `998`.
 Calculator will base this calculation taking into account ONLY the pre-defined dimensions (see: curl -i -X GET  http://127.0.0.1:8080/supported).
 It will identify which of them will better match the needs and will return it.
 Your request should be as follows:
@@ -551,7 +550,7 @@ Which will return a message like:
 
 # Module
 MySQLOperatorCalculator is also available as module.
-This is it you can include it in your code and query it directly getting back objects to browse or Json.
+This is it you can include it in your code and query it directly getting back objects to browse or json.
 The example directory contains a very simple example of code on how to do it, but mainly you have to:
 ```go 
 import (
@@ -582,7 +581,7 @@ func testSupportedJson(supported MO.Configuration, calculator MO.MysqlOperatorCa
 
 }
 ```
-In the example above I get the list of all supported platform in Json format
+In the example above I get the list of all supported platform in json format
 But the list as objects is already there in one single call:
 ```go
 my.GetSupportedLayouts()
@@ -647,8 +646,8 @@ then we can populate it, in this case we DO NOT set a supported environment but 
 	myRequest.Connections = 70
 	myRequest.Mysqlversion = MO.Version{8, 0, 33}
 ```
-With DImension Id 999 we declare is going to be an open scope and after we must declare the CPU and memory.
-If instead we choose a fix and supported dimension, then the Dimension.Id and MySQL Version, will be enough.
+With Dimension.Id 999 we declare that configuration request is open scope and after we must declare the CPU and memory.
+If instead we choose a fix and supported dimension, then Dimension.Id and MySQL Version will be enough.
 
 We then need to:
 ```go
@@ -710,8 +709,9 @@ In this case I am getting only the values for the MySQL family and getting one m
 They are returned as String Buffer, you will then able to manipulate them as you like.
 
 # Final... 
-The toool is there and it needs testing and real evaluation, so I reccomand you to test, test, test whatever configuration you will get. 
-Notihing is perfect, so let me know if you find things that make no sense or not workign as expected. 
+
+The tool is there and it needs testing and real evaluation, so I reccomend you to test, test, test whatever configuration you will get. 
+Nothing is perfect, so let me know if you find things that make no sense or not working as expected. 
   
 Last thing ... 
 you can use:
