@@ -2,8 +2,9 @@ package mysqloperatorcalculator
 
 import (
 	"bytes"
-	"code.cloudfoundry.org/bytefmt"
 	"errors"
+
+	"code.cloudfoundry.org/bytefmt"
 )
 
 // ***********************************
@@ -55,14 +56,6 @@ const (
 	*/
 	GroupRepGCSCacheMemStructureCost = 52428800
 
-	/*
-		Another mamboJambo areound GR. The cost/footprint of the GCS cache is not inclusive of the certification cache, which is per thread and depends on the type of operations.
-		In short this should be dynamically adjusted while operations are ongoing.
-		Here I am just trying to add some cost over the memory consumption to avoid OOM kill in the operator.
-		OOM kill doesn't take place when running on VM or other systems using swap
-	*/
-	GroupReplicationCertificationMultiplierFactor = 9 // <-------------------- LOAD factor
-
 	/* Minlimit is the % of memory assigned to Innodb buffer pool compared to the total memory assigned to mysql
 	We have different min limit per type of replication (galera and Group replication) because the different impact of the internal cache.
 	In GR the certification cache is suffering of an issue. In short the certification cache is clean/flushed on commit, but if the operation is a long one like insert into A from select * from b ;
@@ -72,7 +65,7 @@ const (
 	as such we need to allocate less memory to innodb and more to buffers.
 	By consequence the % of innodb memory for galera is higher than GR
 	*/
-	MinLimitPXC = 0.55 // <-------------------- LOAD factor
+	MinLimitPXC = 0.45 // <-------------------- LOAD factor
 	MinLimitGR  = 0.40 // <-------------------- LOAD factor
 
 	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
@@ -258,7 +251,7 @@ func (conf *Configuration) Init() {
 	conf.LoadType = []LoadType{
 		{1, "Mainly Reads", "Blogs ~2% Writes 95% Reads"},
 		{2, "Light OLTP", "Shops online  up to 20% Writes "},
-		{3, "Heavy OLTP", "Intense analitics, telephony, gaming. 50/50% Reads and Writes"},
+		{3, "Heavy OLTP", "Intense analytics, telephony, gaming. 50/50% Reads and Writes"},
 	}
 
 	conf.Connections = []int{50, 100, 200, 500, 1000, 2000}
@@ -338,8 +331,8 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 
 	groupReplicationGroup := map[string]Parameter{
 
-		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "5", "5", 0, 20, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_flow_control_period":            {"loose_group_replication_flow_control_period", "configuration", "groupReplication", "1", "1", 1, 5, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "268435456", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "2097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},

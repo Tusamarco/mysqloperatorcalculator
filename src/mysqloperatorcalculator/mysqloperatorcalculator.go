@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"strconv"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type MysqlOperatorCalculator struct {
@@ -172,7 +173,7 @@ func getConfForConfRequest(request ConfigurationRequest, conf Configuration) Con
 
 	for i := 0; i < len(conf.LoadType); i++ {
 
-		if request.Dimension.Id == conf.LoadType[i].Id {
+		if request.LoadType.Id == conf.LoadType[i].Id {
 			request.LoadType = conf.LoadType[i]
 			break
 		}
