@@ -11,7 +11,7 @@ import (
 // Constants
 // ***********************************
 const (
-	VERSION = "v1.9.0"
+	VERSION = "v1.10.1"
 
 	OkI                    = 1001
 	ClosetolimitI          = 2001
