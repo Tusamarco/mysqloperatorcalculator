@@ -3,10 +3,11 @@ package mysqloperatorcalculator
 import (
 	"bytes"
 	"fmt"
-	"github.com/hashicorp/go-version"
-	log "github.com/sirupsen/logrus"
 	"math"
 	"strconv"
+
+	"github.com/hashicorp/go-version"
+	log "github.com/sirupsen/logrus"
 )
 
 type Configurator struct {
@@ -196,13 +197,6 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			c.getGcache()
 		}
 
-		if c.request.DBType == "group_replication" {
-			// GCS cache
-			group := c.families["mysql"].Groups["configuration_groupReplication"]
-			group.Parameters["loose_group_replication_message_cache_size"] = c.getGCScache(group.Parameters["loose_group_replication_message_cache_size"])
-			c.families["mysql"].Groups["configuration_groupReplication"] = group
-		}
-
 		// Innodb BP and Params
 		c.getInnodbParameters()
 
@@ -219,6 +213,13 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			c.getGroupReplicationParameters()
 		}
 
+		// We calculate the GCS cache as last thing given we need to base it on the remaining free memory and allocate as much as we can
+		if c.request.DBType == "group_replication" {
+			// GCS cache
+			group := c.families["mysql"].Groups["configuration_groupReplication"]
+			group.Parameters["loose_group_replication_message_cache_size"] = c.getGCScache(group.Parameters["loose_group_replication_message_cache_size"])
+			c.families["mysql"].Groups["configuration_groupReplication"] = group
+		}
 		// set Probes timeouts
 		// MySQL
 		// Proxy
@@ -269,16 +270,24 @@ func (c *Configurator) filterByMySQLVersion() map[string]Family {
 
 // calculate gcache effects on memory (estimation)
 func (c *Configurator) getGcache() {
+	/*
+	  Recent tests and digging proved that the galera cache footprint in memory can be very high, almost 95% or more of the declared file size
+	  Given that it will be better to se the calculation in a more restrictive way and also limit the gcache itself to not be more than the 1/3 of the available free memory.
+	  This will penalize IST but we cannot risk swap or OOMKILL
+	*/
 	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
+	if c.reference.gcache > (c.reference.memoryLeftover / 3) {
+		c.reference.gcache = (c.reference.memoryLeftover / 3)
+	}
 	// Calculating the Gcache footprint based on the load factor and load type
-	gcacheFootPrintFactor := 0.3
+	gcacheFootPrintFactor := 0.5
 	switch c.reference.loadID {
 	case 1:
 		gcacheFootPrintFactor = gcacheFootPrintFactor
 	case 2:
-		gcacheFootPrintFactor = 0.4
-	case 3:
 		gcacheFootPrintFactor = 0.6
+	case 3:
+		gcacheFootPrintFactor = 0.8
 	}
 	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * gcacheFootPrintFactor))
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
@@ -552,6 +561,8 @@ func (c *Configurator) getGroupReplicationParameters() {
 	//	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
 	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
 	//group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
+	group.Parameters["loose_group_replication_flow_control_period"] = c.paramGroupReplicationFlowControlPeriod(group.Parameters["loose_group_replication_flow_control_period"])
+	//loose_group_replication_flow_control_period
 
 	c.families["mysql"].Groups["configuration_groupReplication"] = group
 }
@@ -576,9 +587,12 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 
 // calculate BP removing from available memory the connections buffers, gcache memory footprint and give a % of additional space
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
-
+	/*
+		I need to review the memory allocation for BP in respect to the final free memory,. Given few issues in the memory
+		consumption we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
+	*/
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.95))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.85))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
 	c.reference.memoryLeftover -= bufferPool
@@ -943,7 +957,11 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
 	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
 	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
-	mem := uint64(c.reference.memoryLeftover / 11)
+	//mem := uint64(c.reference.memoryLeftover / 11)
+
+	// We calculate the available GCS memory as the % of total memory to pass test this will give us the
+	// max bytes usable for galera gcs
+	mem := uint64(float64(c.reference.memoryLeftover) * MinLimitGR)
 
 	//We need to consider that the cache stucture takes 50MB so we need to remove them from the available
 	mem = mem - GroupRepGCSCacheMemStructureCost
@@ -964,21 +982,21 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 		print(err.Error())
 	}
 
-	// If the default value is less than the tenth part of the memory footprint then we will use that as value,
-	// otherwise we will calculate it as the tenth of memory leftover
+	// If the default value is less than the free memory calculated then we will use that as value,
+	// otherwise we will calculate it as the free memory left considering we cannot go over the value defined by MinLimitGR
 	if def < mem {
 		parameter.Value = strconv.FormatUint(def, 10)
 	}
 
-	if mem >= parameter.Min {
-		parameter.Value = strconv.FormatUint(mem, 10)
-	} else {
-		parameter.Value = strconv.FormatUint(parameter.Min, 10)
-	}
+	//if mem >= parameter.Min {
+	//	parameter.Value = strconv.FormatUint(mem, 10)
+	//} else {
+	//	parameter.Value = strconv.FormatUint(parameter.Min, 10)
+	//}
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
 	c.reference.gcscache = c.reference.gcscacheFootprint
-	c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * GroupReplicationCertificationMultiplierFactor
+	//c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * GroupReplicationCertificationMultiplierFactor
 	c.reference.memoryLeftover -= c.reference.gcscacheFootprint
 
 	return parameter
@@ -992,6 +1010,19 @@ func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter Paramet
 	def, _ := strconv.Atoi(parameter.Default)
 	if val < def {
 		val = def
+	}
+	parameter.Value = strconv.Itoa(val)
+
+	return parameter
+}
+
+// We calculate the group_replication_flow_control_period based on the load factor higer is the load less long is the period.
+// The default is 1 that is fine for most of the loads having hundreds to thousands of transaction per second. But if you have less this should become higher.
+func (c *Configurator) paramGroupReplicationFlowControlPeriod(parameter Parameter) Parameter {
+	val := int(math.Ceil(float64(float32(parameter.Max) * (1 - c.reference.loadFactor))))
+	mind := int(parameter.Min)
+	if val < mind {
+		val = mind
 	}
 	parameter.Value = strconv.Itoa(val)
 
@@ -1105,6 +1136,7 @@ func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter
 	return parameter
 }
 
+// HERE overUtilizing is calculated for the memory!
 func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBType string) (ResponseMessage, bool) {
 	overUtilizing := false
 	minlimit := float64(MinLimitPXC)
