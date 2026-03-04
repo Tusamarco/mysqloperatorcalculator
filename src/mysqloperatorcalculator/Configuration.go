@@ -3,6 +3,7 @@ package mysqloperatorcalculator
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
 	"code.cloudfoundry.org/bytefmt"
 )
@@ -65,8 +66,13 @@ const (
 	as such we need to allocate less memory to innodb and more to buffers.
 	By consequence the % of innodb memory for galera is higher than GR
 	*/
-	MinLimitPXC = 0.45 // <-------------------- LOAD factor
-	MinLimitGR  = 0.40 // <-------------------- LOAD factor
+	MinLimitPXC            = 0.45 // <-------------------- LOAD factor
+	MinLimitGR             = 0.40 // <-------------------- LOAD factor
+	MemoryFreeMinimumLimit = 0.06
+
+	// Autoscaling dimension
+	CPUIncrement    = 500
+	MemoryIncrement = 500
 
 	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
 	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
@@ -77,10 +83,10 @@ const (
 	- read/write 50/50
 	*/
 	// TODO move this to configuration to easy tune
-	CpuConncetionMillFactorRead           = 6  // <-------------------- LOAD factor
-	CpuConncetionMillFactorReadWriteLight = 10 // <-------------------- LOAD factor
-	CpuConncetionMillFactorReadWriteEqual = 14 // <-------------------- LOAD factor
-	CpuConncetionMillFactorReadWriteHeavy = 20 // <-------------------- LOAD factor
+	CpuConncetionMillFactorRead           = 1.2 // <-------------------- LOAD factor
+	CpuConncetionMillFactorReadWriteLight = 2.2 // <-------------------- LOAD factor
+	CpuConncetionMillFactorReadWriteEqual = 3.6 // <-------------------- LOAD factor
+	CpuConncetionMillFactorReadWriteHeavy = 4   // <-------------------- LOAD factor
 	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
 	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
 	*/
@@ -232,7 +238,7 @@ func (conf *Configuration) Init() {
 		{3, "Medium", 4500, "8GB", 8589934592, 3800, 500, 200, 7516192768, 751619276, 322122547},
 		{4, "Large", 6500, "16GB", 17179869184, 5500, 700, 300, 15032385536, 1610612736, 536870912},
 		{5, "2XLarge", 8500, "32GB", 34359738368, 7400, 800, 300, 32212254720, 1610612736, 536870912},
-		{6, "4XLarge", 16000, "64GB", 34359738368, 14000, 1500, 500, 66571993088, 1610612736, 536870912},
+		{6, "4XLarge", 16000, "64GB", 68719476736, 14000, 1500, 500, 66571993088, 1610612736, 536870912},
 		{7, "8XLarge", 32000, "128GB", 137438953472, 29000, 2000, 1000, 135291469824, 1610612736, 536870912},
 		{8, "12XLarge", 48000, "192GB", 206158430208, 45000, 2000, 1000, 204010946560, 1610612736, 536870912},
 		{9, "16XLarge", 64000, "256GB", 274877906944, 60000, 3000, 1000, 271656681472, 2147483648, 1073741824},
@@ -605,4 +611,97 @@ func (d *Dimension) ConvertMemoryToBytes(memoryHuman string) (float64, error) {
 	memoryBytes = float64(b)
 
 	return memoryBytes, err1
+}
+
+// formatMemoryMB converts bytes to a string in megabytes (MB).
+func (d *Dimension) formatMemoryMB(bytes float64) string {
+	megabytes := bytes / 1000 / 1000
+	return fmt.Sprintf("%.0fMB", megabytes)
+}
+
+// ScaleDimension increases the resources of the starting dimension by
+// 100 CPU and 500 MB, allocating the extra resources to sub‑components
+// based on the percentage distribution found in a higher predefined dimension.
+// The higher dimension is retrieved by fetchHigherDimension (stub provided).
+
+func (conf *Configuration) ScaleDimension(start Dimension) (Dimension, error) {
+	// 1. Obtain the higher predefined dimension (implement fetchHigherDimension accordingly).
+	id := start.Id
+	higher := conf.Dimension[id+1]
+
+	var err error
+	if err != nil {
+		return Dimension{}, fmt.Errorf("failed to get higher dimension: %w", err)
+	}
+
+	// 2. Validate higher dimension has non‑zero totals to avoid division by zero.
+	if higher.Cpu == 0 {
+		return Dimension{}, errors.New("higher dimension has zero total CPU")
+	}
+	if higher.MemoryBytes == 0 {
+		return Dimension{}, errors.New("higher dimension has zero total memory")
+	}
+
+	// 3. Calculate resource percentages from the higher dimension.
+	pctMysqlCPU := float64(higher.MysqlCpu) / float64(higher.Cpu)
+	pctProxyCPU := float64(higher.ProxyCpu) / float64(higher.Cpu)
+	pctPmmCPU := float64(higher.PmmCpu) / float64(higher.Cpu)
+
+	// memory
+	pctMysqlMem := float64(higher.MysqlMemory) / float64(higher.MemoryBytes)
+	pctProxyMem := float64(higher.ProxyMemory) / float64(higher.MemoryBytes)
+	pctPmmMem := float64(higher.PmmMemory) / float64(higher.MemoryBytes)
+
+	// 4. Increment totals.
+	const cpuIncrement = CPUIncrement
+	const memIncrementBytes = MemoryIncrement * 1000 * 1000 // 500 MB in bytes (1 MB = 10^6 bytes)
+
+	newCPU := start.Cpu + cpuIncrement
+	newMemoryBytes := start.MemoryBytes + memIncrementBytes
+
+	// 5. Compute component increments based on percentages.
+	incMysqlCPU := int(float64(cpuIncrement) * pctMysqlCPU)
+	incProxyCPU := int(float64(cpuIncrement) * pctProxyCPU)
+	incPmmCPU := int(float64(cpuIncrement) * pctPmmCPU)
+
+	// memory
+	incMysqlMem := int64(memIncrementBytes * pctMysqlMem)
+	incProxyMem := int64(memIncrementBytes * pctProxyMem)
+	incPmmMem := int64(memIncrementBytes * pctPmmMem)
+
+	// 6. Adjust CPU increments to ensure the sum exactly equals cpuIncrement
+	//    (handles rounding errors).
+	totalIncCPU := incMysqlCPU + incProxyCPU + incPmmCPU
+	if diff := cpuIncrement - totalIncCPU; diff != 0 {
+		// Add the difference to the largest component (simple heuristic).
+		switch {
+		case incMysqlCPU >= incProxyCPU && incMysqlCPU >= incPmmCPU:
+			incMysqlCPU += diff
+		case incProxyCPU >= incMysqlCPU && incProxyCPU >= incPmmCPU:
+			incProxyCPU += diff
+		default:
+			incPmmCPU += diff
+		}
+	}
+
+	// If the new memory set is equal or higher the next Dimension we shift the id
+	if newMemoryBytes >= higher.MemoryBytes {
+		id = higher.Id
+	}
+	// 7. Build the new dimension.
+	newDim := Dimension{
+		Id:          id,
+		Name:        "scaled",
+		Cpu:         newCPU,
+		MemoryBytes: newMemoryBytes,
+		Memory:      higher.formatMemoryMB(newMemoryBytes),
+		MysqlCpu:    start.MysqlCpu + incMysqlCPU,
+		ProxyCpu:    start.ProxyCpu + incProxyCPU,
+		PmmCpu:      start.PmmCpu + incPmmCPU,
+		MysqlMemory: start.MysqlMemory + float64(incMysqlMem),
+		ProxyMemory: start.ProxyMemory + float64(incProxyMem),
+		PmmMemory:   start.PmmMemory + float64(incPmmMem),
+	}
+
+	return newDim, nil
 }

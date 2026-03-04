@@ -30,7 +30,7 @@ type references struct {
 	innodbRedoLogDim   int64   // total redolog dimension
 	innoDBbpSize       int64   // Calculated BP to apply
 	loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
-	loadAdjustmentMax  int     // Upper limit given optimal condition between CPU resources and connections using as minimal connections=50
+	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=50
 	loadFactor         float32 // Load factor for calculation based on loadAdjustment
 	loadID             int     // loadID coming from request
 	dimension          int     // Dimension Id coming from request
@@ -74,9 +74,10 @@ func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 
 func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf Configuration, message ResponseMessage) (ResponseMessage, bool) {
 
-	//if dimension is custom we take it from request otherwise from Configuration
+	// If dimension is custom we take it from request otherwise from Configuration
+	// Also if the request is scaled
 	var dim Dimension
-	if r.Dimension.Id != DimensionOpen {
+	if r.Dimension.Id != DimensionOpen && r.Dimension.Name != "scaled" {
 		dim = conf.GetDimensionByID(r.Dimension.Id)
 	} else {
 		dim = r.Dimension
@@ -145,7 +146,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 func (c *Configurator) calculateLoadConnectionFactor(dim Dimension, message ResponseMessage) (float32, ResponseMessage, bool, bool) {
 	// set load factors based on the incoming request
 	// we first decide how many cycles want by cpu and then calculate the pressure
-	CpuConncetionMillFactor := 0
+	CpuConncetionMillFactor := 0.0
 
 	switch c.reference.loadID {
 	case LoadTypeMostlyReads:
@@ -160,7 +161,7 @@ func (c *Configurator) calculateLoadConnectionFactor(dim Dimension, message Resp
 		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteLight
 	}
 
-	c.reference.loadAdjustmentMax = dim.MysqlCpu / CpuConncetionMillFactor
+	c.reference.loadAdjustmentMax = float64(dim.MysqlCpu) / CpuConncetionMillFactor
 	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
 	if loadConnectionFactor > 1 {
 		message.MType = OverutilizingI
@@ -656,7 +657,7 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 	return parameter
 }
 
-// TODO  this must reflect the storage class used which at the moment is not implemented yet
+// TODO  UPDATE TO NEW DEFAULTS this must reflect the storage class used which at the moment is not implemented yet
 // so what we will do is just to stay out of it and keep  it base of the load
 // Advisor thing
 func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
@@ -908,9 +909,9 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	b.WriteString("\n")
 	b.WriteString("memory leftover         = " + strconv.FormatInt(memLeftOver, 10) + "\n")
 	b.WriteString("\n")
-	b.WriteString("Load factor         = " + strconv.FormatFloat(loadFactor, 'f', 2, 64) + "\n")
+	b.WriteString("Load factor cpu        = " + strconv.FormatFloat(loadFactor, 'f', 2, 64) + "\n")
 
-	b.WriteString("Load resource factor= " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
+	b.WriteString("Load mem factor= " + strconv.FormatFloat(bpPct, 'f', 2, 64) + "\n")
 	b.WriteString("\n")
 
 	return c.FillResponseMessage(bpPct, responseMsg, b, c.request.DBType)
@@ -1137,11 +1138,24 @@ func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter
 }
 
 // HERE overUtilizing is calculated for the memory!
+// HERE is where Memory validation is happening
 func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBType string) (ResponseMessage, bool) {
 	overUtilizing := false
 	minlimit := float64(MinLimitPXC)
 	if DBType == "group_replication" {
 		minlimit = float64(MinLimitGR)
+	}
+
+	// First of all, we want to have % of memory always available if we do not have it, we conclude we are Overutilizing.
+	if c.reference.memoryLeftover <= 0 {
+		overUtilizing = true
+		pct = 0.0
+	} else {
+		minMemoryAccepted := int64(c.reference.memory * MemoryFreeMinimumLimit)
+		if c.reference.memoryLeftover < minMemoryAccepted {
+			overUtilizing = true
+			pct = 0.0
+		}
 	}
 
 	if pct < minlimit {

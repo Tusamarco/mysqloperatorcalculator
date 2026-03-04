@@ -63,8 +63,8 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	//if we pass open calculation by connection (id = 998 )  and a valid number for connection (>50) then we will
 	//loop by the available dimensions to identify which is matching the number of connections
 	if ConfRequest.Dimension.Id == 998 {
-		if moc.IncomingRequest.Connections < 50 {
-			moc.IncomingRequest.Connections = 50
+		if moc.IncomingRequest.Connections < MinConnectionNumber {
+			moc.IncomingRequest.Connections = MinConnectionNumber
 		}
 		log.Info("Calculating by number of connections")
 		moc.IncomingRequest.Dimension = moc.Conf.Dimension[0]
@@ -75,12 +75,16 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	// Internally if Connection dimension is NOT passed we will loop in a very rude way to calculate the maximum
 	// number of supported calculation
 	error, message, Families := moc.getCalculateInt()
+
+	// Calculate the resources by the number of given connections
 	if calculateByConnection {
 		error, message, Families = moc.getCalculateInt()
-		idx := 0
+		//idx := 0
 		for message.MType == OverutilizingI {
-			idx += 1
-			moc.IncomingRequest.Dimension = moc.Conf.Dimension[idx]
+			//idx += 1
+			dimension, _ := moc.Conf.ScaleDimension(moc.IncomingRequest.Dimension)
+			moc.IncomingRequest.Dimension = dimension
+			//moc.IncomingRequest.Dimension = moc.Conf.Dimension[idx]
 			error, message, Families = moc.getCalculateInt()
 		}
 		message.MText = message.MText + "\n!!!! Resources calculated to match connections request\n\n"
@@ -88,8 +92,9 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 		message.MType = ResourcesRecalculated
 	}
 
+	// Auto calculation of the connections
 	if moc.IncomingRequest.Connections == 0 {
-		moc.IncomingRequest.Connections = 50
+		moc.IncomingRequest.Connections = MinConnectionNumber
 		for message.MType != OverutilizingI {
 			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections + 10
 			error, message, Families = moc.getCalculateInt()
@@ -125,7 +130,13 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 	ConfRequest = moc.IncomingRequest
 
 	conf.Init()
-	ConfRequest = getConfForConfRequest(ConfRequest, conf)
+	// If the conf request is NOT of type auto-scaling or auto calculating the connections, then get the conf request from the pre-defined
+	//TODO I don't like to hardcode things !! This must go away
+	if ConfRequest.Dimension.Id != 999 &&
+		ConfRequest.Dimension.Id != 998 &&
+		ConfRequest.Dimension.Name != "scaled" {
+		ConfRequest = getConfForConfRequest(ConfRequest, conf)
+	}
 	families = family.Init(ConfRequest.DBType)
 
 	responseMsg, connectionsOverload := moc.configurator.Init(ConfRequest, families, conf, responseMsg)
