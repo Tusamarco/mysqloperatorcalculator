@@ -30,7 +30,7 @@ type references struct {
 	innodbRedoLogDim   int64   // total redolog dimension
 	innoDBbpSize       int64   // Calculated BP to apply
 	loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
-	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=50
+	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=MinConnectionNumber
 	loadFactor         float32 // Load factor for calculation based on loadAdjustment
 	loadID             int     // loadID coming from request
 	dimension          int     // Dimension Id coming from request
@@ -87,7 +87,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))
 	}
 	connections := r.Connections
-	if connections < MinConnectionNumber && connections != 0 {
+	if connections < MinConnectionNumber || connections == 0 {
 		connections = MinConnectionNumber
 	}
 
@@ -1128,7 +1128,7 @@ func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter Param
 // we use default MySQL formula here
 func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter {
 	maxConn := c.request.Connections
-	val := (maxConn / 50) + 8
+	val := (maxConn / MinConnectionNumber) + 8
 	if val > int(parameter.Max) {
 		val = int(parameter.Max)
 	}

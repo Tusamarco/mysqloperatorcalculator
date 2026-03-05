@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	"strconv"
 	"syscall"
+
+	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 )
 
 func main() {
@@ -36,6 +37,7 @@ func testSupportedJson(supported MO.Configuration, calculator MO.MysqlOperatorCa
 func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	var b bytes.Buffer
 	var myRequest MO.ConfigurationRequest
+	var conf MO.Configuration
 	var err error
 
 	myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
@@ -56,9 +58,10 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	myRequest.DBType = MO.DbTypeGroupReplication  //"pxc"
 	myRequest.Output = MO.ResultOutputFormatHuman //"human"
 	myRequest.Connections = 0
-	myRequest.Mysqlversion = MO.Version{8, 0, 33}
+	myRequest.Mysqlversion = MO.Version{8, 4, 5}
 
-	moc.Init(myRequest)
+	conf.Init()
+	moc.Init(myRequest, conf)
 	error, responseMessage, families := moc.GetCalculate()
 	if error != nil {
 		print(error.Error())
