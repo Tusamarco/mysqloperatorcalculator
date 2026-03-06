@@ -66,9 +66,18 @@ const (
 	as such we need to allocate less memory to innodb and more to buffers.
 	By consequence the % of innodb memory for galera is higher than GR
 	*/
-	MinLimitPXC            = 0.45 // <-------------------- LOAD factor
-	MinLimitGR             = 0.40 // <-------------------- LOAD factor
+	MinLimitPXC = 0.45 // <-------------------- LOAD factor
+	MinLimitGR  = 0.40 // <-------------------- LOAD factor
+
+	// MemoryFreeMinimumLimit This is the amount of memory in % that we must keep free no matter what to give some space to the server
 	MemoryFreeMinimumLimit = 0.06
+
+	// Weights to use to tune the GCS calculation
+
+	GCSWeightRead           = 0.20
+	GCSWeightReadLightWrite = 0.50
+	GCSWeightReadWrite      = 0.60
+	GCSWeightReadHeavyWrite = 1
 
 	// Autoscaling dimension
 	CPUIncrement    = 500
@@ -82,18 +91,20 @@ const (
 	- read/write 80/20
 	- read/write 50/50
 	*/
+	// Global
 	// TODO move this to configuration to easy tune
 	CpuConncetionMillFactorRead           = 1.2 // <-------------------- LOAD factor
 	CpuConncetionMillFactorReadWriteLight = 2.2 // <-------------------- LOAD factor
 	CpuConncetionMillFactorReadWriteEqual = 3.6 // <-------------------- LOAD factor
 	CpuConncetionMillFactorReadWriteHeavy = 4   // <-------------------- LOAD factor
+
 	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
 	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
 	*/
 	ConnectionWeighPctLimit = 0.50
 
 	//Minimum number of connection
-	MinConnectionNumber = 50
+	MinConnectionNumber = 20
 )
 
 //*********************************
@@ -339,8 +350,8 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 
 		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_flow_control_period":            {"loose_group_replication_flow_control_period", "configuration", "groupReplication", "1", "1", 1, 5, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "268435456", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "2097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "134217728", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "5097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_poll_spin_loops": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},

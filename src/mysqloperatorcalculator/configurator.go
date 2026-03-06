@@ -431,7 +431,7 @@ func (c *Configurator) sumConnectionBuffers(params map[string]Parameter) {
 		}
 	}
 
-	//once we have the total buffer allocation we calculate the total estimation of the temp table based on the load factor to adjust the connection load
+	//once we have the total buffer allocation, we calculate the total estimation of the temp table based on the load factor to adjust the connection load
 	possibleConnectionTmp := float64(c.reference.connections) * float64(c.reference.loadFactor)
 	possibleTmpMemPressure := int64(math.Floor(possibleConnectionTmp)) * c.reference.tmpTableFootprint
 
@@ -558,7 +558,7 @@ func (c *Configurator) getGroupReplicationParameters() {
 	group := c.families["mysql"].Groups["configuration_groupReplication"]
 	group.Parameters["loose_group_replication_member_expel_timeout"] = c.paramGroupReplicationMemberExpelTimeout(group.Parameters["loose_group_replication_member_expel_timeout"])
 	group.Parameters["loose_group_replication_autorejoin_tries"] = c.paramGroupReplicationAutorejoinTries(group.Parameters["loose_group_replication_autorejoin_tries"])
-	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageCacheSize(group.Parameters["loose_group_replication_communication_max_message_size"])
+	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageMaxSize(group.Parameters["loose_group_replication_communication_max_message_size"])
 	//	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
 	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
 	//group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
@@ -955,49 +955,41 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Paramet
 
 // We calculate the dimension of the GCS keeping it as low as possible to prevent OOM Kill
 func (c *Configurator) getGCScache(parameter Parameter) Parameter {
-	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
-	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
-	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
-	//mem := uint64(c.reference.memoryLeftover / 11)
 
-	// We calculate the available GCS memory as the % of total memory to pass test this will give us the
-	// max bytes usable for galera gcs
-	mem := uint64(float64(c.reference.memoryLeftover) * MinLimitGR)
+	// We calculate the available GCS memory as the % of total memory to pass the test this will give us the
+	// max bytes usable for galera gcs. To do so we remove the MemoryFreeMinimumLimit(%) and see what is left
+	mem := float64(c.reference.memoryLeftover) - (c.reference.memoryMySQL * MemoryFreeMinimumLimit)
+
+	//mem := uint64(float64(c.reference.memoryLeftover))
 
 	//We need to consider that the cache stucture takes 50MB so we need to remove them from the available
 	mem = mem - GroupRepGCSCacheMemStructureCost
 
 	switch c.reference.loadID {
 	case LoadTypeMostlyReads:
-		mem = uint64(float64(mem) * 0.40)
+		mem = float64(mem) * GCSWeightRead
 	case LoadTypeSomeWrites:
-		mem = uint64(float64(mem) * 0.60)
+		mem = float64(mem) * GCSWeightReadLightWrite
 	case LoadTypeEqualReadsWrites:
-		mem = uint64(float64(mem) * 0.80)
+		mem = float64(mem) * GCSWeightReadWrite
 	case LoadTypeHeavyWrites:
-		mem = uint64(float64(mem) * 1)
+		mem = float64(mem) * GCSWeightReadHeavyWrite
 	}
 
-	def, err := strconv.ParseUint(parameter.Default, 10, 64)
-	if err != nil {
-		print(err.Error())
-	}
+	// We also tune it in relation to the pressure created by the % of connections
+	mem = float64(mem) * float64(c.reference.loadFactor)
 
-	// If the default value is less than the free memory calculated then we will use that as value,
-	// otherwise we will calculate it as the free memory left considering we cannot go over the value defined by MinLimitGR
-	if def < mem {
-		parameter.Value = strconv.FormatUint(def, 10)
-	}
+	val := parameter.Min
 
-	//if mem >= parameter.Min {
-	//	parameter.Value = strconv.FormatUint(mem, 10)
-	//} else {
-	//	parameter.Value = strconv.FormatUint(parameter.Min, 10)
-	//}
+	// If the calculated value is less than the parameter minimal value, we use the Minimal value instead of the calculated one
+	if uint64(mem) >= val {
+		parameter.Value = strconv.FormatUint(uint64(mem), 10)
+	} else {
+		parameter.Value = strconv.FormatUint(val, 10)
+	}
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
 	c.reference.gcscache = c.reference.gcscacheFootprint
-	//c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * GroupReplicationCertificationMultiplierFactor
 	c.reference.memoryLeftover -= c.reference.gcscacheFootprint
 
 	return parameter
@@ -1044,25 +1036,28 @@ func (c *Configurator) paramGroupReplicationAutorejoinTries(parameter Parameter)
 }
 
 // We use a small message default size when in lack of memory resource to force the fragmentation
-func (c *Configurator) paramGroupReplicationMessageCacheSize(parameter Parameter) Parameter {
-	val := int64(1048576) //1 mb
+func (c *Configurator) paramGroupReplicationMessageMaxSize(parameter Parameter) Parameter {
+	pval, err := strconv.Atoi(parameter.Value) //1 mb
+	if err != nil {
+		print(err.Error())
+	}
 
+	val := float64(pval)
 	switch c.request.Dimension.Id {
 	case 1:
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val
 	case 2:
-		val = val * 2
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val * 0.9
 	case 3:
-		val = val * 4
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val * 0.8
 	case 4:
-		val = val * 6
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val * 0.7
 	default:
 		parameter.Value = parameter.Default
 
 	}
+
+	parameter.Value = strconv.FormatFloat(val, 'f', 0, 64)
 
 	return parameter
 }
