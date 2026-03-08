@@ -999,7 +999,13 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 // We calculate the expel timeout based on a Max value that is reasonable, not the maximum value defined in MySQL config
 // the value is calculated don the level of the load
 func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter Parameter) Parameter {
-	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	valS, err := strconv.ParseFloat(parameter.Value, 32)
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+
+	val := int(math.Ceil(float64(valS * float64(c.reference.loadFactor))))
+
 	def, _ := strconv.Atoi(parameter.Default)
 	if val < def {
 		val = def
