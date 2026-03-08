@@ -574,13 +574,13 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 		parameter.Value = "True"
 		return parameter
 	case LoadTypeSomeWrites:
-		parameter.Value = "True"
+		parameter.Value = "False"
 		return parameter
 	case LoadTypeEqualReadsWrites:
 		parameter.Value = "False"
 		return parameter
 	default:
-		parameter.Value = "True"
+		parameter.Value = "False"
 		return parameter
 	}
 
@@ -1010,7 +1010,7 @@ func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter Paramet
 }
 
 // We calculate the group_replication_flow_control_period based on the load factor higer is the load less long is the period.
-// The default is 1 that is fine for most of the loads having hundreds to thousands of transaction per second. But if you have less this should become higher.
+// The default is 1 that is fine for most of the loads having hundreds to thousands of transactions per second. But if you have less this should become higher.
 func (c *Configurator) paramGroupReplicationFlowControlPeriod(parameter Parameter) Parameter {
 	val := int(math.Ceil(float64(float32(parameter.Max) * (1 - c.reference.loadFactor))))
 	mind := int(parameter.Min)
