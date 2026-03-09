@@ -55,7 +55,7 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 		syscall.Exit(1)
 	}
 
-	myRequest.DBType = MO.DbTypeGroupReplication  //"pxc"
+	myRequest.DBType = MO.DbTypeGroupReplication  //"pxc or group_replication"
 	myRequest.Output = MO.ResultOutputFormatHuman //"human"
 	myRequest.Connections = 0
 	myRequest.Mysqlversion = MO.Version{8, 4, 5}

@@ -132,7 +132,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	//c.reference.loadFactor = 1 - c.reference.loadAdjustment
 	//c.reference.loadAdjustment = loadConnectionFactor
 	c.reference.loadFactor = loadConnectionFactor
-	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * 0.65)
+	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * InnoDBPctValue)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
 	var p ProviderParam
@@ -214,7 +214,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			c.getGroupReplicationParameters()
 		}
 
-		// We calculate the GCS cache as last thing given we need to base it on the remaining free memory and allocate as much as we can
+		// We calculate the GCS cache as the last thing given we need to base it on the remaining free memory and allocate as much as we can
 		if c.request.DBType == "group_replication" {
 			// GCS cache
 			group := c.families["mysql"].Groups["configuration_groupReplication"]
@@ -589,11 +589,11 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 // calculate BP removing from available memory the connections buffers, gcache memory footprint and give a % of additional space
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
 	/*
-		I need to review the memory allocation for BP in respect to the final free memory,. Given few issues in the memory
-		consumption we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
+		I need to review the memory allocation for BP in respect to the final free memory, Given few issues in the memory
+		 consumption, we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
 	*/
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.85))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValue))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
 	c.reference.memoryLeftover -= bufferPool

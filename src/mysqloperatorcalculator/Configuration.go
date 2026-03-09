@@ -51,6 +51,9 @@ const (
 	ResultOutputFormatJson  = "json"
 	ResultOutputFormatHuman = "human"
 
+	// Innodb % on memory allocation
+	InnoDBPctValue = 0.68
+
 	// groupreplication
 	/*
 		This is a bit MaboJambo about GR, apparently we have 50MB cost per transaction which we must use in the memory consumption calculation
@@ -73,7 +76,6 @@ const (
 	MemoryFreeMinimumLimit = 0.06
 
 	// Weights to use to tune the GCS calculation
-
 	GCSWeightRead           = 0.20
 	GCSWeightReadLightWrite = 0.50
 	GCSWeightReadWrite      = 0.60
@@ -565,12 +567,12 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 		// first identify the range request fits in
 		calcDimension := conf.getDimensionForFreeCalculation(dimension)
 
-		dimension.MysqlCpu = int(float64(dimension.Cpu) * float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu))
-		dimension.ProxyCpu = int(float64(dimension.Cpu) * float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu))
-		dimension.PmmCpu = int(float64(dimension.Cpu) * float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu))
-		dimension.MysqlMemory = float64(dimension.MemoryBytes) * calcDimension.MysqlMemory / calcDimension.MemoryBytes
-		dimension.ProxyMemory = float64(dimension.MemoryBytes) * calcDimension.ProxyMemory / calcDimension.MemoryBytes
-		dimension.PmmMemory = float64(dimension.MemoryBytes) * calcDimension.PmmMemory / calcDimension.MemoryBytes
+		dimension.MysqlCpu = int(float64(dimension.Cpu) * (float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu)))
+		dimension.ProxyCpu = int(float64(dimension.Cpu) * (float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu)))
+		dimension.PmmCpu = int(float64(dimension.Cpu) * (float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu)))
+		dimension.MysqlMemory = float64(dimension.MemoryBytes) * (calcDimension.MysqlMemory / calcDimension.MemoryBytes)
+		dimension.ProxyMemory = float64(dimension.MemoryBytes) * (calcDimension.ProxyMemory / calcDimension.MemoryBytes)
+		dimension.PmmMemory = float64(dimension.MemoryBytes) * (calcDimension.PmmMemory / calcDimension.MemoryBytes)
 
 	}
 
@@ -607,7 +609,7 @@ func InBetween(i, min, max int) bool {
 
 // TODO	***MySQL Supported version (testing is hardcoded we need to query check.percona.com ***
 func (conf *Configuration) getMySQLVersion() {
-	conf.Mysqlversions.Max = Version{9, 4, 0}
+	conf.Mysqlversions.Max = Version{10, 10, 0}
 	conf.Mysqlversions.Min = Version{8, 0, 32}
 }
 

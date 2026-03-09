@@ -36,7 +36,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 
 	ConfRequest = moc.IncomingRequest
 
-	// Before going to the configurator we check the incoming request and IF is not ok we return an error message
+	// Before going to the configurator, we check the incoming request and IF is not ok we return an error message
 	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
 		err := fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id)
 		if err != nil {
@@ -93,7 +93,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	}
 
 	// Auto calculation of the connections
-	if moc.IncomingRequest.Connections == 0 {
+	if moc.IncomingRequest.Connections == 0 { //|| moc.IncomingRequest.Dimension.Id == DimensionOpen {
 		moc.IncomingRequest.Connections = MinConnectionNumber
 		for message.MType != OverutilizingI {
 			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections + 10

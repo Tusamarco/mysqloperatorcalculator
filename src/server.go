@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+
 	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	log "github.com/sirupsen/logrus"
 
@@ -181,6 +182,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 }
 
+// TODO move this inside MOC
 // we loop the arrays to get all the info we may need for the operation using the ID as reference
 func getConfForConfRequest(request MO.ConfigurationRequest, conf MO.Configuration) MO.ConfigurationRequest {
 
