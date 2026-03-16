@@ -132,7 +132,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	//c.reference.loadFactor = 1 - c.reference.loadAdjustment
 	//c.reference.loadAdjustment = loadConnectionFactor
 	c.reference.loadFactor = loadConnectionFactor
-	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * InnoDBPctValue)
+	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * InnoDBPctValuePXC)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
 	var p ProviderParam
@@ -193,6 +193,10 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 	if conWeight < ConnectionWeighPctLimit {
 		// Innodb Redolog
 		c.getInnodbRedolog()
+
+		// Calculate The buffer pool independently
+		c.getInnodbBufferPool()
+
 		if c.request.DBType == "pxc" {
 			// Gcache
 			c.getGcache()
@@ -284,11 +288,11 @@ func (c *Configurator) getGcache() {
 	gcacheFootPrintFactor := 0.5
 	switch c.reference.loadID {
 	case 1:
-		gcacheFootPrintFactor = gcacheFootPrintFactor
+		gcacheFootPrintFactor = GcacheFootPrintFactorRead
 	case 2:
-		gcacheFootPrintFactor = 0.6
+		gcacheFootPrintFactor = GcacheFootPrintFactorLightWrite
 	case 3:
-		gcacheFootPrintFactor = 0.8
+		gcacheFootPrintFactor = GcacheFootPrintFactorReadWrite
 	}
 	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * gcacheFootPrintFactor))
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
@@ -540,11 +544,16 @@ func (c *Configurator) getGcacheLoad() float64 {
 	}
 }
 
+func (c *Configurator) getInnodbBufferPool() {
+	group := c.families["mysql"].Groups["configuration_innodb"]
+	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
+	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
+	c.families["mysql"].Groups["configuration_innodb"] = group
+}
+
 func (c *Configurator) getInnodbParameters() {
 	group := c.families["mysql"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
-	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
-	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_purge_threads"] = c.paramInnoDPurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
@@ -590,13 +599,32 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
 	/*
 		I need to review the memory allocation for BP in respect to the final free memory, Given few issues in the memory
-		 consumption, we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
+		consumption, we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
+		For the moment the real cases had shown that we cannot use the same calculation for PXC and GR.
+		The last is high memory consumer and also in the calculation of the free memory we need to assume the worse, so
+		deduct the higher % between PXC and GR
 	*/
+	var bufferPollPct float64
+	if c.request.DBType == "pxc" {
+		bufferPollPct = InnoDBPctValuePXC
+	} else {
+		bufferPollPct = InnoDBPctValueGR
+	}
+
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValue))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
+
+	// Now we get the higher value to calculate the free memory. I know is crap
+	//if InnoDBPctValuePXC > InnoDBPctValueGR {
+	//	bufferPool = InnoDBPctValuePXC
+	//} else {
+	//	bufferPool = InnoDBPctValueGR
+	//}
+
+	bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValuePXC))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
-	c.reference.memoryLeftover -= bufferPool
+	c.reference.memoryLeftover -= bufferPoolSubstract
 	return parameter
 }
 

@@ -52,7 +52,8 @@ const (
 	ResultOutputFormatHuman = "human"
 
 	// Innodb % on memory allocation
-	InnoDBPctValue = 0.68
+	InnoDBPctValuePXC = 0.80
+	InnoDBPctValueGR  = 0.68
 
 	// groupreplication
 	/*
@@ -74,6 +75,11 @@ const (
 
 	// MemoryFreeMinimumLimit This is the amount of memory in % that we must keep free no matter what to give some space to the server
 	MemoryFreeMinimumLimit = 0.06
+
+	// Weight to use when using PXC for Gcache in mem footprint
+	GcacheFootPrintFactorRead       = 0.5
+	GcacheFootPrintFactorLightWrite = 0.6
+	GcacheFootPrintFactorReadWrite  = 0.8
 
 	// Weights to use to tune the GCS calculation
 	GCSWeightRead           = 0.20
