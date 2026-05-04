@@ -691,16 +691,16 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case LoadTypeMostlyReads:
-		parameter.Value = "1400"
+		parameter.Value = "28000"
 		return parameter
 	case LoadTypeSomeWrites:
-		parameter.Value = "1800"
+		parameter.Value = "24000"
 		return parameter
 	case LoadTypeEqualReadsWrites:
-		parameter.Value = "2000"
+		parameter.Value = "20000"
 		return parameter
 	default:
-		parameter.Value = "1400"
+		parameter.Value = "20000"
 		return parameter
 	}
 

@@ -12,7 +12,7 @@ import (
 // Constants
 // ***********************************
 const (
-	VERSION = "v1.10.1"
+	VERSION = "v1.11.0"
 
 	OkI                    = 1001
 	ClosetolimitI          = 2001
@@ -140,22 +140,24 @@ type ResponseMessage struct {
 
 // Configuration used to pass available configurations
 type Configuration struct {
-	DBType        []string      `json:"dbtype"`
-	Dimension     []Dimension   `json:"dimension"`
-	LoadType      []LoadType    `json:"loadtype"`
-	Connections   []int         `json:"connections"`
-	Output        []string      `json:"output"`
-	Mysqlversions MySQLVersions `json:"mysqlversions"`
+	DBType          []string      `json:"dbtype"`
+	Dimension       []Dimension   `json:"dimension"`
+	LoadType        []LoadType    `json:"loadtype"`
+	Connections     []int         `json:"connections"`
+	Output          []string      `json:"output"`
+	Mysqlversions   MySQLVersions `json:"mysqlversions"`
+	ProviderCostPct float64       `json:"providercostpct"`
 }
 
 // ConfigurationRequest used to store the incoming request
 type ConfigurationRequest struct {
-	DBType       string    `json:"dbtype"`
-	Dimension    Dimension `json:"dimension"`
-	LoadType     LoadType  `json:"loadtype"`
-	Connections  int       `json:"connections"`
-	Output       string    `json:"output"`
-	Mysqlversion Version   `json:"mysqlversion"`
+	DBType          string    `json:"dbtype"`
+	Dimension       Dimension `json:"dimension"`
+	LoadType        LoadType  `json:"loadtype"`
+	Connections     int       `json:"connections"`
+	Output          string    `json:"output"`
+	Mysqlversion    Version   `json:"mysqlversion"`
+	ProviderCostPct float64   `json:"providercostpct"`
 }
 
 // Dimension used to represent the POD dimension

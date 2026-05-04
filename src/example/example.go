@@ -4,8 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"syscall"
+	"log"
 
 	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 )
@@ -14,143 +13,118 @@ func main() {
 	var moc MO.MysqlOperatorCalculator
 
 	testSupportedJson(moc.GetSupportedLayouts(), moc)
-
 	testGetconfiguration(moc)
-
 }
 
 func testSupportedJson(supported MO.Configuration, calculator MO.MysqlOperatorCalculator) {
 	output, err := json.MarshalIndent(&supported, "", "  ")
 	if err != nil {
-		print(err.Error())
+		// Used log instead of built-in print for better error formatting
+		log.Printf("Failed to marshal JSON: %v\n", err)
+		return // Exit early if there's an error
 	}
 	fmt.Println(string(output))
-
 }
 
-//Get the whole set of parameters plus message as the following objects hierarchy
-//  Families->
-//          Groups -->
-//                   Parameters
-// THE VALID value in parameter to be consider as CURRENT is !!Value!!!
-
+// Get the whole set of parameters plus message as the following objects hierarchy
+// Families -> Groups -> Parameters
+// THE VALID value in parameter to be considered as CURRENT is !!Value!!!
 func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
-	var b bytes.Buffer
 	var myRequest MO.ConfigurationRequest
 	var conf MO.Configuration
 	var err error
 
 	myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
-	// Memory resource can be set as bytes using MemoryBytes ...
-	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, MemoryBytes: 2684354560}
-	//OR in literal using M G GB etc with Memory
-	// We can assign the value...
+
+	// Setting the dimension using literal values
 	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
-	// Then convert and validate it if it follows the standards:
-	var errConv error
-	myRequest.Dimension.MemoryBytes, errConv = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
-	// If any error then do what you want ...
-	if errConv != nil {
-		println(errConv.Error())
-		syscall.Exit(1)
+
+	// Convert and validate standards
+	myRequest.Dimension.MemoryBytes, err = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
+	if err != nil {
+		// Use log.Fatalf instead of syscall.Exit(1) for idiomatic Go process exiting
+		log.Fatalf("Memory conversion error: %v\n", err)
 	}
 
-	myRequest.DBType = MO.DbTypeGroupReplication  //"pxc or group_replication"
-	myRequest.Output = MO.ResultOutputFormatHuman //"human"
-	myRequest.Connections = 0
-	myRequest.Mysqlversion = MO.Version{8, 4, 5}
+	myRequest.DBType = MO.DbTypeGroupReplication  // "pxc" or "group_replication"
+	myRequest.Output = MO.ResultOutputFormatHuman // "human" or "json"
+	myRequest.Connections = 3000
+	myRequest.Mysqlversion = MO.Version{Major: 8, Minor: 4, Patch: 8}
+	myRequest.ProviderCostPct = 0.12
 
 	conf.Init()
 	moc.Init(myRequest, conf)
-	error, responseMessage, families := moc.GetCalculate()
-	if error != nil {
-		print(error.Error())
+
+	calcErr, responseMessage, families := moc.GetCalculate()
+	if calcErr != nil {
+		log.Printf("Calculation error: %v\n", calcErr)
 	}
 
 	if responseMessage.MType > 0 {
-		fmt.Errorf(strconv.Itoa(responseMessage.MType) + ": " + responseMessage.MName + " " + responseMessage.MText)
+		log.Printf("Message %d: %s %s\n", responseMessage.MType, responseMessage.MName, responseMessage.MText)
 	}
-	if len(families) > 0 {
 
-		// IF Using HUMAN than:
-		//  we can use the by group parsing option:
+	if len(families) > 0 {
 		//----------------------------------------------------------
-		//1 Parsing  families and Groups one by one
+		// 1. Parsing families and Groups one by one
 		//----------------------------------------------------------
 
 		// Parsing MySQL
-		MySQLfamily, err1 := moc.GetFamily(MO.FamilyTypeMysql)
-		if err1 != nil {
-			print(err1.Error())
-		}
-		mysqlStBuffer, err1 := MySQLfamily.ParseFamilyGroup(MO.GroupNameMySQLd, " ")
-		probesStBuffer, err1 := MySQLfamily.ParseFamilyGroup(MO.GroupNameProbes, " ")
-		resourcesStBuffer, err1 := MySQLfamily.ParseFamilyGroup(MO.GroupNameResources, " ")
-
-		if err1 == nil {
-			println("[mysql configuration]")
-			println(mysqlStBuffer.String())
-			println("[mysql probes]")
-			println(probesStBuffer.String())
-			println("[mysql resources]")
-			println(resourcesStBuffer.String())
+		if mysqlFamily, err := moc.GetFamily(MO.FamilyTypeMysql); err == nil {
+			printFamilyGroup(mysqlFamily, MO.GroupNameMySQLd, " ", "mysql configuration")
+			printFamilyGroup(mysqlFamily, MO.GroupNameProbes, " ", "mysql probes")
+			printFamilyGroup(mysqlFamily, MO.GroupNameResources, " ", "mysql resources")
 		} else {
-			println(err1.Error())
+			log.Printf("Error retrieving MySQL family: %v\n", err)
 		}
 
-		//Parsing Proxy
-		proxyFamily, err1 := moc.GetFamily(MO.FamilyTypeProxy)
-		if err1 != nil {
-			print(err1.Error())
-		}
-		proxyStBuffer, err1 := proxyFamily.ParseFamilyGroup(MO.GroupNameHAProxy, "  ")
-		proxyProbesStBuffer, err1 := proxyFamily.ParseFamilyGroup(MO.GroupNameProbes, "  ")
-		proxyResourcesStBuffer, err1 := proxyFamily.ParseFamilyGroup(MO.GroupNameResources, "  ")
-		if err1 == nil {
-			println("[haproxy configuration]")
-			println(proxyStBuffer.String())
-			println("[haproxy probes]")
-			println(proxyProbesStBuffer.String())
-			println("[haproxy resources]")
-			println(proxyResourcesStBuffer.String())
-
+		// Parsing Proxy
+		if proxyFamily, err := moc.GetFamily(MO.FamilyTypeProxy); err == nil {
+			printFamilyGroup(proxyFamily, MO.GroupNameHAProxy, "  ", "haproxy configuration")
+			printFamilyGroup(proxyFamily, MO.GroupNameProbes, "  ", "haproxy probes")
+			printFamilyGroup(proxyFamily, MO.GroupNameResources, "  ", "haproxy resources")
 		} else {
-			println(err1.Error())
+			log.Printf("Error retrieving Proxy family: %v\n", err)
 		}
 
-		//Parsing Monitoring
-		monitorFamily, err1 := moc.GetFamily(MO.FamilyTypeMonitor)
-		if err1 != nil {
-			print(err1.Error())
-		}
-		monitorProbesStBuffer, err1 := monitorFamily.ParseFamilyGroup(MO.GroupNameProbes, "  ")
-		monitorResourcesStBuffer, err1 := monitorFamily.ParseFamilyGroup(MO.GroupNameResources, "  ")
-		if err1 == nil {
-			println("[monitor probes]")
-			println(monitorProbesStBuffer.String())
-			println("[monitor resources]")
-			println(monitorResourcesStBuffer.String())
-
+		// Parsing Monitoring
+		if monitorFamily, err := moc.GetFamily(MO.FamilyTypeMonitor); err == nil {
+			printFamilyGroup(monitorFamily, MO.GroupNameProbes, "  ", "monitor probes")
+			printFamilyGroup(monitorFamily, MO.GroupNameResources, "  ", "monitor resources")
 		} else {
-			println(err1.Error())
+			log.Printf("Error retrieving Monitor family: %v\n", err)
 		}
 
 		//----------------------------------------------------------
-		//2 Parsing  All in one shot (mainly for Json output)
+		// 2. Parsing All in one shot (mainly for Json output)
 		//----------------------------------------------------------
+		var b bytes.Buffer
 
 		if myRequest.Output == "json" {
 			b, err = moc.GetJSONOutput(responseMessage, myRequest, families)
 		} else {
 			b, err = moc.GetHumanOutput(responseMessage, myRequest, families)
 		}
+
 		if err != nil {
-			print(err.Error())
+			log.Printf("Error generating output: %v\n", err)
 			return
 		}
 
-		println(b.String())
-
+		fmt.Println(b.String())
 	}
+}
 
+// Helper interface & function to DRY up repetitive parsing and error checking code
+type FamilyParser interface {
+	ParseFamilyGroup(groupName string, separator string) (bytes.Buffer, error)
+}
+
+func printFamilyGroup(family FamilyParser, groupName, separator, header string) {
+	buffer, err := family.ParseFamilyGroup(groupName, separator)
+	if err != nil {
+		log.Printf("Failed to parse [%s]: %v\n", header, err)
+		return
+	}
+	fmt.Printf("[%s]\n%s\n", header, buffer.String())
 }

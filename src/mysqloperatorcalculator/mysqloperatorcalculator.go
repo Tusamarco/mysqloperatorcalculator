@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"code.cloudfoundry.org/bytefmt"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -18,9 +19,14 @@ type MysqlOperatorCalculator struct {
 	Conf            Configuration
 }
 
-func (moc *MysqlOperatorCalculator) Init(inR ConfigurationRequest, conf Configuration) {
+func (moc *MysqlOperatorCalculator) Init(inR ConfigurationRequest, conf Configuration) ConfigurationRequest {
 	moc.IncomingRequest = inR
 	moc.Conf = conf
+	if moc.IncomingRequest.ProviderCostPct > 0 {
+		moc.adjustResourcesByProvider()
+	}
+	moc.GetConfForConfRequest()
+	return moc.IncomingRequest
 }
 
 func (m *MysqlOperatorCalculator) GetSupportedLayouts() Configuration {
@@ -288,6 +294,7 @@ func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfR
 //Families section
 //=====================================================
 
+// GetFamily retrieves the Family object corresponding to the given family name or returns an error if the name is invalid.
 func (moc *MysqlOperatorCalculator) GetFamily(familyname string) (Family, error) {
 	var family Family
 	var err1 error
@@ -299,4 +306,42 @@ func (moc *MysqlOperatorCalculator) GetFamily(familyname string) (Family, error)
 	}
 	err1 = errors.New("ERROR: Invalid Family name")
 	return family, err1
+}
+
+// GetConfForConfRequest updates the incoming request configuration by applying matching dimensions and load types.
+func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
+
+	request := moc.IncomingRequest
+	conf := moc.Conf
+	if request.Dimension.Id != DimensionOpen {
+		for i := 0; i < len(conf.Dimension); i++ {
+
+			if request.Dimension.Id == conf.Dimension[i].Id {
+				request.Dimension = conf.Dimension[i]
+				break
+			}
+		}
+	} else {
+		//We need to calibrate the dimension on the base of an open request
+		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
+	}
+
+	for i := 0; i < len(conf.LoadType); i++ {
+
+		if request.Dimension.Id == conf.LoadType[i].Id {
+			request.LoadType = conf.LoadType[i]
+			break
+		}
+	}
+
+	moc.IncomingRequest = request
+
+}
+
+// adjustResourcesByProvider recalculates CPU and memory values based on the provider-specific cost percentage adjustment.
+func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
+
+	moc.IncomingRequest.Dimension.Cpu = int(float64(moc.IncomingRequest.Dimension.Cpu) * (1.0 - moc.IncomingRequest.ProviderCostPct))
+	moc.IncomingRequest.Dimension.MemoryBytes = float64(moc.IncomingRequest.Dimension.MemoryBytes) * (1.0 - moc.IncomingRequest.ProviderCostPct)
+	moc.IncomingRequest.Dimension.Memory = bytefmt.ByteSize(uint64(moc.IncomingRequest.Dimension.MemoryBytes))
 }

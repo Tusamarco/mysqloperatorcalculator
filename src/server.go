@@ -100,7 +100,7 @@ func handleRequestCalculator(writer http.ResponseWriter, request *http.Request) 
 func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error {
 	// message object to pass back
 	var responseMsg MO.ResponseMessage
-	var family MO.Family
+	//var family MO.Family
 	var conf MO.Configuration
 	var families map[string]MO.Family
 	var ConfRequest MO.ConfigurationRequest
@@ -124,6 +124,7 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	err1 := json.Unmarshal(body, &ConfRequest)
 	if err1 != nil {
 		println(err1.Error())
+		exitWithCode(64)
 	}
 	if ConfRequest.Dimension.MemoryBytes == 0 && ConfRequest.Dimension.Id != 998 {
 		var errConv error
@@ -159,12 +160,12 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	// create and init all the different params organized by families
 	conf.Init()
-	ConfRequest = getConfForConfRequest(ConfRequest, conf)
-	families = family.Init(ConfRequest.DBType)
+
+	//families = family.Init(ConfRequest.DBType)
 
 	// initialize the configurator (where all the things happens)
 	var moc MO.MysqlOperatorCalculator
-	moc.Init(ConfRequest, conf)
+	ConfRequest = moc.Init(ConfRequest, conf)
 
 	err1, responseMsg, familiesCalculated := moc.GetCalculate()
 	if err1 != nil {
@@ -180,34 +181,6 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 
 	//fmt.Fprintf(os.Stdout, "\n%s\n", body)
 
-}
-
-// TODO move this inside MOC
-// we loop the arrays to get all the info we may need for the operation using the ID as reference
-func getConfForConfRequest(request MO.ConfigurationRequest, conf MO.Configuration) MO.ConfigurationRequest {
-
-	if request.Dimension.Id != MO.DimensionOpen {
-		for i := 0; i < len(conf.Dimension); i++ {
-
-			if request.Dimension.Id == conf.Dimension[i].Id {
-				request.Dimension = conf.Dimension[i]
-				break
-			}
-		}
-	} else {
-		//We need to calibrate the dimension on the base of an open request
-		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
-	}
-
-	for i := 0; i < len(conf.LoadType); i++ {
-
-		if request.Dimension.Id == conf.LoadType[i].Id {
-			request.LoadType = conf.LoadType[i]
-			break
-		}
-	}
-
-	return request
 }
 
 func exitWithCode(errorCode int) {

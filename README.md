@@ -148,6 +148,14 @@ Here I just report some example, however connections can be any number starting 
 MySQL versions report the range of supported version by configurator. Inside that window the parameters settings and/or presence may change.
 This is it, you may have a different value given the version of the MySQL or a parameter can be fully removed. 
 
+### Provider cost
+From version `1.11.0` we also support Provider cost `providercostpct`. This parameter is useful when the environment where your K8 solution is running 
+injects additional container(s) and consumes resources.  
+The value needs to be passed as percent value of the resource consumed over the total available.
+IE: if you have 20GB available but the additional containers installed consume 3Gb then you have 15% resources allocated, so your `providercostpct` will be `"providercostpct":0.15`
+
+
+
 
 ## Getting the calculation back
 Once you have it running and have decided what to pick, is time to get the calculation back.
