@@ -12,7 +12,7 @@ import (
 // Constants
 // ***********************************
 const (
-	VERSION = "v1.10.1"
+	VERSION = "v1.11.0"
 
 	OkI                    = 1001
 	ClosetolimitI          = 2001
@@ -51,6 +51,10 @@ const (
 	ResultOutputFormatJson  = "json"
 	ResultOutputFormatHuman = "human"
 
+	// Innodb % on memory allocation
+	InnoDBPctValuePXC = 0.80
+	InnoDBPctValueGR  = 0.68
+
 	// groupreplication
 	/*
 		This is a bit MaboJambo about GR, apparently we have 50MB cost per transaction which we must use in the memory consumption calculation
@@ -66,9 +70,22 @@ const (
 	as such we need to allocate less memory to innodb and more to buffers.
 	By consequence the % of innodb memory for galera is higher than GR
 	*/
-	MinLimitPXC            = 0.45 // <-------------------- LOAD factor
-	MinLimitGR             = 0.40 // <-------------------- LOAD factor
+	MinLimitPXC = 0.45 // <-------------------- LOAD factor
+	MinLimitGR  = 0.40 // <-------------------- LOAD factor
+
+	// MemoryFreeMinimumLimit This is the amount of memory in % that we must keep free no matter what to give some space to the server
 	MemoryFreeMinimumLimit = 0.06
+
+	// Weight to use when using PXC for Gcache in mem footprint
+	GcacheFootPrintFactorRead       = 0.5
+	GcacheFootPrintFactorLightWrite = 0.6
+	GcacheFootPrintFactorReadWrite  = 0.8
+
+	// Weights to use to tune the GCS calculation
+	GCSWeightRead           = 0.20
+	GCSWeightReadLightWrite = 0.50
+	GCSWeightReadWrite      = 0.60
+	GCSWeightReadHeavyWrite = 1
 
 	// Autoscaling dimension
 	CPUIncrement    = 500
@@ -82,18 +99,20 @@ const (
 	- read/write 80/20
 	- read/write 50/50
 	*/
+	// Global
 	// TODO move this to configuration to easy tune
 	CpuConncetionMillFactorRead           = 1.2 // <-------------------- LOAD factor
 	CpuConncetionMillFactorReadWriteLight = 2.2 // <-------------------- LOAD factor
 	CpuConncetionMillFactorReadWriteEqual = 3.6 // <-------------------- LOAD factor
 	CpuConncetionMillFactorReadWriteHeavy = 4   // <-------------------- LOAD factor
+
 	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
 	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
 	*/
 	ConnectionWeighPctLimit = 0.50
 
 	//Minimum number of connection
-	MinConnectionNumber = 50
+	MinConnectionNumber = 20
 )
 
 //*********************************
@@ -121,22 +140,24 @@ type ResponseMessage struct {
 
 // Configuration used to pass available configurations
 type Configuration struct {
-	DBType        []string      `json:"dbtype"`
-	Dimension     []Dimension   `json:"dimension"`
-	LoadType      []LoadType    `json:"loadtype"`
-	Connections   []int         `json:"connections"`
-	Output        []string      `json:"output"`
-	Mysqlversions MySQLVersions `json:"mysqlversions"`
+	DBType          []string      `json:"dbtype"`
+	Dimension       []Dimension   `json:"dimension"`
+	LoadType        []LoadType    `json:"loadtype"`
+	Connections     []int         `json:"connections"`
+	Output          []string      `json:"output"`
+	Mysqlversions   MySQLVersions `json:"mysqlversions"`
+	ProviderCostPct float64       `json:"providercostpct"`
 }
 
 // ConfigurationRequest used to store the incoming request
 type ConfigurationRequest struct {
-	DBType       string    `json:"dbtype"`
-	Dimension    Dimension `json:"dimension"`
-	LoadType     LoadType  `json:"loadtype"`
-	Connections  int       `json:"connections"`
-	Output       string    `json:"output"`
-	Mysqlversion Version   `json:"mysqlversion"`
+	DBType          string    `json:"dbtype"`
+	Dimension       Dimension `json:"dimension"`
+	LoadType        LoadType  `json:"loadtype"`
+	Connections     int       `json:"connections"`
+	Output          string    `json:"output"`
+	Mysqlversion    Version   `json:"mysqlversion"`
+	ProviderCostPct float64   `json:"providercostpct"`
 }
 
 // Dimension used to represent the POD dimension
@@ -321,7 +342,8 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"innodb_redo_log_capacity":       {"innodb_redo_log_capacity", "configuration", "innodb", "119537664", "104857600", 8388608, 137438953472, MySQLVersions{Version{8, 0, 31}, Version{10, 1, 0}}},
 		"innodb_page_cleaners":           {"innodb_page_cleaners", "configuration", "innodb", "1", "4", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"innodb_purge_threads":           {"innodb_purge_threads", "configuration", "innodb", "1", "4", 1, 32, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_io_capacity_max":         {"innodb_io_capacity_max", "configuration", "innodb", "1000", "1400", 100, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 8, 0}}},
+		"innodb_io_capacity_max":         {"innodb_io_capacity_max", "configuration", "innodb", "20000", "20000", 100, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 8, 0}}},
+		"innodb_numa_interleave":         {"innodb_numa_interleave", "configuration", "innodb", "0", "1", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 8, 0}}},
 		"innodb_buffer_pool_chunk_size":  {"innodb_buffer_pool_chunk_size", "configuration", "innodb", "2097152", "134217728", 1048576, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"innodb_parallel_read_threads":   {"innodb_parallel_read_threads", "configuration", "innodb", "1", "4", 1, 256, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"innodb_monitor_enable":          {"innodb_monitor_enable", "configuration", "innodb", "ALL", "ALL", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
@@ -339,8 +361,9 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 
 		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_flow_control_period":            {"loose_group_replication_flow_control_period", "configuration", "groupReplication", "1", "1", 1, 5, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "268435456", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "2097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "134217728", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "5097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "15", "5", 0, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_poll_spin_loops": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
@@ -553,12 +576,12 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 		// first identify the range request fits in
 		calcDimension := conf.getDimensionForFreeCalculation(dimension)
 
-		dimension.MysqlCpu = int(float64(dimension.Cpu) * float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu))
-		dimension.ProxyCpu = int(float64(dimension.Cpu) * float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu))
-		dimension.PmmCpu = int(float64(dimension.Cpu) * float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu))
-		dimension.MysqlMemory = float64(dimension.MemoryBytes) * calcDimension.MysqlMemory / calcDimension.MemoryBytes
-		dimension.ProxyMemory = float64(dimension.MemoryBytes) * calcDimension.ProxyMemory / calcDimension.MemoryBytes
-		dimension.PmmMemory = float64(dimension.MemoryBytes) * calcDimension.PmmMemory / calcDimension.MemoryBytes
+		dimension.MysqlCpu = int(float64(dimension.Cpu) * (float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu)))
+		dimension.ProxyCpu = int(float64(dimension.Cpu) * (float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu)))
+		dimension.PmmCpu = int(float64(dimension.Cpu) * (float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu)))
+		dimension.MysqlMemory = float64(dimension.MemoryBytes) * (calcDimension.MysqlMemory / calcDimension.MemoryBytes)
+		dimension.ProxyMemory = float64(dimension.MemoryBytes) * (calcDimension.ProxyMemory / calcDimension.MemoryBytes)
+		dimension.PmmMemory = float64(dimension.MemoryBytes) * (calcDimension.PmmMemory / calcDimension.MemoryBytes)
 
 	}
 
@@ -595,7 +618,7 @@ func InBetween(i, min, max int) bool {
 
 // TODO	***MySQL Supported version (testing is hardcoded we need to query check.percona.com ***
 func (conf *Configuration) getMySQLVersion() {
-	conf.Mysqlversions.Max = Version{9, 4, 0}
+	conf.Mysqlversions.Max = Version{10, 10, 0}
 	conf.Mysqlversions.Min = Version{8, 0, 32}
 }
 

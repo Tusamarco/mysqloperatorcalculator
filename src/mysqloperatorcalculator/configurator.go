@@ -30,7 +30,7 @@ type references struct {
 	innodbRedoLogDim   int64   // total redolog dimension
 	innoDBbpSize       int64   // Calculated BP to apply
 	loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
-	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=50
+	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=MinConnectionNumber
 	loadFactor         float32 // Load factor for calculation based on loadAdjustment
 	loadID             int     // loadID coming from request
 	dimension          int     // Dimension Id coming from request
@@ -87,7 +87,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		log.Warning(fmt.Sprintf("Invalid load %d or Dimension %d detected ", load.Id, dim.Id))
 	}
 	connections := r.Connections
-	if connections < MinConnectionNumber && connections != 0 {
+	if connections < MinConnectionNumber || connections == 0 {
 		connections = MinConnectionNumber
 	}
 
@@ -132,7 +132,7 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	//c.reference.loadFactor = 1 - c.reference.loadAdjustment
 	//c.reference.loadAdjustment = loadConnectionFactor
 	c.reference.loadFactor = loadConnectionFactor
-	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * 0.65)
+	c.reference.idealBufferPoolDIm = int64(float64(c.reference.memoryMySQL) * InnoDBPctValuePXC)
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
 	var p ProviderParam
@@ -193,6 +193,10 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 	if conWeight < ConnectionWeighPctLimit {
 		// Innodb Redolog
 		c.getInnodbRedolog()
+
+		// Calculate The buffer pool independently
+		c.getInnodbBufferPool()
+
 		if c.request.DBType == "pxc" {
 			// Gcache
 			c.getGcache()
@@ -214,7 +218,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			c.getGroupReplicationParameters()
 		}
 
-		// We calculate the GCS cache as last thing given we need to base it on the remaining free memory and allocate as much as we can
+		// We calculate the GCS cache as the last thing given we need to base it on the remaining free memory and allocate as much as we can
 		if c.request.DBType == "group_replication" {
 			// GCS cache
 			group := c.families["mysql"].Groups["configuration_groupReplication"]
@@ -284,11 +288,11 @@ func (c *Configurator) getGcache() {
 	gcacheFootPrintFactor := 0.5
 	switch c.reference.loadID {
 	case 1:
-		gcacheFootPrintFactor = gcacheFootPrintFactor
+		gcacheFootPrintFactor = GcacheFootPrintFactorRead
 	case 2:
-		gcacheFootPrintFactor = 0.6
+		gcacheFootPrintFactor = GcacheFootPrintFactorLightWrite
 	case 3:
-		gcacheFootPrintFactor = 0.8
+		gcacheFootPrintFactor = GcacheFootPrintFactorReadWrite
 	}
 	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * gcacheFootPrintFactor))
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
@@ -431,7 +435,7 @@ func (c *Configurator) sumConnectionBuffers(params map[string]Parameter) {
 		}
 	}
 
-	//once we have the total buffer allocation we calculate the total estimation of the temp table based on the load factor to adjust the connection load
+	//once we have the total buffer allocation, we calculate the total estimation of the temp table based on the load factor to adjust the connection load
 	possibleConnectionTmp := float64(c.reference.connections) * float64(c.reference.loadFactor)
 	possibleTmpMemPressure := int64(math.Floor(possibleConnectionTmp)) * c.reference.tmpTableFootprint
 
@@ -540,11 +544,16 @@ func (c *Configurator) getGcacheLoad() float64 {
 	}
 }
 
+func (c *Configurator) getInnodbBufferPool() {
+	group := c.families["mysql"].Groups["configuration_innodb"]
+	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
+	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
+	c.families["mysql"].Groups["configuration_innodb"] = group
+}
+
 func (c *Configurator) getInnodbParameters() {
 	group := c.families["mysql"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
-	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
-	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_purge_threads"] = c.paramInnoDPurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
@@ -558,7 +567,7 @@ func (c *Configurator) getGroupReplicationParameters() {
 	group := c.families["mysql"].Groups["configuration_groupReplication"]
 	group.Parameters["loose_group_replication_member_expel_timeout"] = c.paramGroupReplicationMemberExpelTimeout(group.Parameters["loose_group_replication_member_expel_timeout"])
 	group.Parameters["loose_group_replication_autorejoin_tries"] = c.paramGroupReplicationAutorejoinTries(group.Parameters["loose_group_replication_autorejoin_tries"])
-	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageCacheSize(group.Parameters["loose_group_replication_communication_max_message_size"])
+	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageMaxSize(group.Parameters["loose_group_replication_communication_max_message_size"])
 	//	group.Parameters["loose_group_replication_unreachable_majority_timeout"] = c.paramGroupReplicationUnreachableMajorityTimeout(group.Parameters["loose_group_replication_unreachable_majority_timeout"])
 	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
 	//group.Parameters["loose_group_replication_compression_threshold"] = c.paramGroupReplicationCompressionThreshold(group.Parameters["loose_group_replication_compression_threshold"])
@@ -574,13 +583,13 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 		parameter.Value = "True"
 		return parameter
 	case LoadTypeSomeWrites:
-		parameter.Value = "True"
+		parameter.Value = "False"
 		return parameter
 	case LoadTypeEqualReadsWrites:
 		parameter.Value = "False"
 		return parameter
 	default:
-		parameter.Value = "True"
+		parameter.Value = "False"
 		return parameter
 	}
 
@@ -589,14 +598,33 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 // calculate BP removing from available memory the connections buffers, gcache memory footprint and give a % of additional space
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
 	/*
-		I need to review the memory allocation for BP in respect to the final free memory,. Given few issues in the memory
-		consumption we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
+		I need to review the memory allocation for BP in respect to the final free memory, Given few issues in the memory
+		consumption, we cannot allocate the 95% of it but keep the more conservative rule of thumb of 85%
+		For the moment the real cases had shown that we cannot use the same calculation for PXC and GR.
+		The last is high memory consumer and also in the calculation of the free memory we need to assume the worse, so
+		deduct the higher % between PXC and GR
 	*/
+	var bufferPollPct float64
+	if c.request.DBType == "pxc" {
+		bufferPollPct = InnoDBPctValuePXC
+	} else {
+		bufferPollPct = InnoDBPctValueGR
+	}
+
 	var bufferPool int64
-	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * 0.85))
+	bufferPool = int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
+
+	// Now we get the higher value to calculate the free memory. I know is crap
+	//if InnoDBPctValuePXC > InnoDBPctValueGR {
+	//	bufferPool = InnoDBPctValuePXC
+	//} else {
+	//	bufferPool = InnoDBPctValueGR
+	//}
+
+	bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValuePXC))
 	parameter.Value = strconv.FormatInt(bufferPool, 10)
 	c.reference.innoDBbpSize = bufferPool
-	c.reference.memoryLeftover -= bufferPool
+	c.reference.memoryLeftover -= bufferPoolSubstract
 	return parameter
 }
 
@@ -663,16 +691,16 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
 	switch c.reference.loadID {
 	case LoadTypeMostlyReads:
-		parameter.Value = "1400"
+		parameter.Value = "28000"
 		return parameter
 	case LoadTypeSomeWrites:
-		parameter.Value = "1800"
+		parameter.Value = "24000"
 		return parameter
 	case LoadTypeEqualReadsWrites:
-		parameter.Value = "2000"
+		parameter.Value = "20000"
 		return parameter
 	default:
-		parameter.Value = "1400"
+		parameter.Value = "20000"
 		return parameter
 	}
 
@@ -955,49 +983,41 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Paramet
 
 // We calculate the dimension of the GCS keeping it as low as possible to prevent OOM Kill
 func (c *Configurator) getGCScache(parameter Parameter) Parameter {
-	//c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
-	//c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * 0.3))
-	//c.reference.memoryLeftover -= c.reference.gcacheFootprint
-	//mem := uint64(c.reference.memoryLeftover / 11)
 
-	// We calculate the available GCS memory as the % of total memory to pass test this will give us the
-	// max bytes usable for galera gcs
-	mem := uint64(float64(c.reference.memoryLeftover) * MinLimitGR)
+	// We calculate the available GCS memory as the % of total memory to pass the test this will give us the
+	// max bytes usable for galera gcs. To do so we remove the MemoryFreeMinimumLimit(%) and see what is left
+	mem := float64(c.reference.memoryLeftover) - (c.reference.memoryMySQL * MemoryFreeMinimumLimit)
+
+	//mem := uint64(float64(c.reference.memoryLeftover))
 
 	//We need to consider that the cache stucture takes 50MB so we need to remove them from the available
 	mem = mem - GroupRepGCSCacheMemStructureCost
 
 	switch c.reference.loadID {
 	case LoadTypeMostlyReads:
-		mem = uint64(float64(mem) * 0.40)
+		mem = float64(mem) * GCSWeightRead
 	case LoadTypeSomeWrites:
-		mem = uint64(float64(mem) * 0.60)
+		mem = float64(mem) * GCSWeightReadLightWrite
 	case LoadTypeEqualReadsWrites:
-		mem = uint64(float64(mem) * 0.80)
+		mem = float64(mem) * GCSWeightReadWrite
 	case LoadTypeHeavyWrites:
-		mem = uint64(float64(mem) * 1)
+		mem = float64(mem) * GCSWeightReadHeavyWrite
 	}
 
-	def, err := strconv.ParseUint(parameter.Default, 10, 64)
-	if err != nil {
-		print(err.Error())
-	}
+	// We also tune it in relation to the pressure created by the % of connections
+	mem = float64(mem) * float64(c.reference.loadFactor)
 
-	// If the default value is less than the free memory calculated then we will use that as value,
-	// otherwise we will calculate it as the free memory left considering we cannot go over the value defined by MinLimitGR
-	if def < mem {
-		parameter.Value = strconv.FormatUint(def, 10)
-	}
+	val := parameter.Min
 
-	//if mem >= parameter.Min {
-	//	parameter.Value = strconv.FormatUint(mem, 10)
-	//} else {
-	//	parameter.Value = strconv.FormatUint(parameter.Min, 10)
-	//}
+	// If the calculated value is less than the parameter minimal value, we use the Minimal value instead of the calculated one
+	if uint64(mem) >= val {
+		parameter.Value = strconv.FormatUint(uint64(mem), 10)
+	} else {
+		parameter.Value = strconv.FormatUint(val, 10)
+	}
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
 	c.reference.gcscache = c.reference.gcscacheFootprint
-	//c.reference.gcscacheFootprint = c.reference.gcscacheFootprint * GroupReplicationCertificationMultiplierFactor
 	c.reference.memoryLeftover -= c.reference.gcscacheFootprint
 
 	return parameter
@@ -1007,7 +1027,13 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 // We calculate the expel timeout based on a Max value that is reasonable, not the maximum value defined in MySQL config
 // the value is calculated don the level of the load
 func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter Parameter) Parameter {
-	val := int(math.Ceil(float64(float32(parameter.Max) * c.reference.loadFactor)))
+	valS, err := strconv.ParseFloat(parameter.Value, 32)
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+
+	val := int(math.Ceil(float64(valS * float64(c.reference.loadFactor))))
+
 	def, _ := strconv.Atoi(parameter.Default)
 	if val < def {
 		val = def
@@ -1018,7 +1044,7 @@ func (c *Configurator) paramGroupReplicationMemberExpelTimeout(parameter Paramet
 }
 
 // We calculate the group_replication_flow_control_period based on the load factor higer is the load less long is the period.
-// The default is 1 that is fine for most of the loads having hundreds to thousands of transaction per second. But if you have less this should become higher.
+// The default is 1 that is fine for most of the loads having hundreds to thousands of transactions per second. But if you have less this should become higher.
 func (c *Configurator) paramGroupReplicationFlowControlPeriod(parameter Parameter) Parameter {
 	val := int(math.Ceil(float64(float32(parameter.Max) * (1 - c.reference.loadFactor))))
 	mind := int(parameter.Min)
@@ -1044,25 +1070,28 @@ func (c *Configurator) paramGroupReplicationAutorejoinTries(parameter Parameter)
 }
 
 // We use a small message default size when in lack of memory resource to force the fragmentation
-func (c *Configurator) paramGroupReplicationMessageCacheSize(parameter Parameter) Parameter {
-	val := int64(1048576) //1 mb
+func (c *Configurator) paramGroupReplicationMessageMaxSize(parameter Parameter) Parameter {
+	pval, err := strconv.Atoi(parameter.Value) //1 mb
+	if err != nil {
+		print(err.Error())
+	}
 
+	val := float64(pval)
 	switch c.request.Dimension.Id {
 	case 1:
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val
 	case 2:
-		val = val * 2
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val * 0.9
 	case 3:
-		val = val * 4
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val * 0.8
 	case 4:
-		val = val * 6
-		parameter.Value = strconv.FormatInt(val, 10)
+		val = val * 0.7
 	default:
 		parameter.Value = parameter.Default
 
 	}
+
+	parameter.Value = strconv.FormatFloat(val, 'f', 0, 64)
 
 	return parameter
 }
@@ -1128,7 +1157,7 @@ func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter Param
 // we use default MySQL formula here
 func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter {
 	maxConn := c.request.Connections
-	val := (maxConn / 50) + 8
+	val := (maxConn / MinConnectionNumber) + 8
 	if val > int(parameter.Max) {
 		val = int(parameter.Max)
 	}
