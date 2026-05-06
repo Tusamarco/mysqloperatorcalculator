@@ -33,41 +33,25 @@ func (m *MysqlOperatorCalculator) GetSupportedLayouts() Configuration {
 	return m.getSupported()
 }
 
-// this is the External call to calculate the whole set
+// GetCalculate is the external call to calculate the whole set
 func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[string]Family) {
 	var responseMsg ResponseMessage
 	var families map[string]Family
-	var ConfRequest ConfigurationRequest
+	var ConfRequest = moc.IncomingRequest
 	calculateByConnection := false
 
-	ConfRequest = moc.IncomingRequest
-
-	// Before going to the configurator, we check the incoming request and IF is not ok we return an error message
+	// Check incoming request; return an error immediately if malformed
 	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
-		err := fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id)
-		if err != nil {
-			return err, responseMsg, families
-		}
-		return nil, responseMsg, families
+		return fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id), responseMsg, families
 	} else if ConfRequest.Dimension.Id == DimensionOpen && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.MemoryBytes == 0) {
-		err := fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory)
-		if err != nil {
-			return err, responseMsg, families
-		}
-		return nil, responseMsg, families
-
+		return fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory), responseMsg, families
 	}
 
 	if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
-		err := fmt.Errorf("DB Type is not correct Supported Types are : %s, %s ", DbTypePXC, DbTypeGroupReplication)
-		if err != nil {
-			return err, responseMsg, families
-		}
-		return nil, responseMsg, families
+		return fmt.Errorf("DB Type is not correct. Supported Types are: %s, %s", DbTypePXC, DbTypeGroupReplication), responseMsg, families
 	}
 
-	//if we pass open calculation by connection (id = 998 )  and a valid number for connection (>50) then we will
-	//loop by the available dimensions to identify which is matching the number of connections
+	// If calculating by connection (id = 998) and valid number for connection
 	if ConfRequest.Dimension.Id == 998 {
 		if moc.IncomingRequest.Connections < MinConnectionNumber {
 			moc.IncomingRequest.Connections = MinConnectionNumber
@@ -75,121 +59,96 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 		log.Info("Calculating by number of connections")
 		moc.IncomingRequest.Dimension = moc.Conf.Dimension[0]
 		calculateByConnection = true
-
 	}
 
-	// Internally if Connection dimension is NOT passed we will loop in a very rude way to calculate the maximum
-	// number of supported calculation
-	error, message, Families := moc.getCalculateInt()
+	calcErr, message, Families := moc.getCalculateInt()
 
 	// Calculate the resources by the number of given connections
 	if calculateByConnection {
-		error, message, Families = moc.getCalculateInt()
-		//idx := 0
+		calcErr, message, Families = moc.getCalculateInt()
 		for message.MType == OverutilizingI {
-			//idx += 1
 			dimension, _ := moc.Conf.ScaleDimension(moc.IncomingRequest.Dimension)
 			moc.IncomingRequest.Dimension = dimension
-			//moc.IncomingRequest.Dimension = moc.Conf.Dimension[idx]
-			error, message, Families = moc.getCalculateInt()
+			calcErr, message, Families = moc.getCalculateInt()
 		}
-		message.MText = message.MText + "\n!!!! Resources calculated to match connections request\n\n"
+		message.MText += "\n!!!! Resources calculated to match connections request\n\n"
 		message.MName = message.GetMessageText(ResourcesRecalculated)
 		message.MType = ResourcesRecalculated
 	}
 
 	// Auto calculation of the connections
-	if moc.IncomingRequest.Connections == 0 { //|| moc.IncomingRequest.Dimension.Id == DimensionOpen {
+	if moc.IncomingRequest.Connections == 0 {
 		moc.IncomingRequest.Connections = MinConnectionNumber
 		for message.MType != OverutilizingI {
-			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections + 10
-			error, message, Families = moc.getCalculateInt()
+			moc.IncomingRequest.Connections += 10
+			calcErr, message, Families = moc.getCalculateInt()
 		}
 
-		moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
-		error, message, Families = moc.getCalculateInt()
+		moc.IncomingRequest.Connections -= 10
+		calcErr, message, Families = moc.getCalculateInt()
 	}
 
 	if message.MType == OverutilizingI {
 		originalConnections := moc.IncomingRequest.Connections
 		for message.MType == OverutilizingI && moc.IncomingRequest.Connections > MinConnectionNumber {
-			moc.IncomingRequest.Connections = moc.IncomingRequest.Connections - 10
-			//log.Debug("Recalculating connections " + strconv.Itoa(moc.IncomingRequest.Connections))
-			error, message, Families = moc.getCalculateInt()
+			moc.IncomingRequest.Connections -= 10
+			calcErr, message, Families = moc.getCalculateInt()
 		}
-		message.MText = message.MText + "\n!!!! Connections recalculated Original: " + strconv.Itoa(originalConnections) + " New Value " + strconv.Itoa(moc.IncomingRequest.Connections) + " plus additional 2 for administrative use !!!\n\n"
+		message.MText += fmt.Sprintf("\n!!!! Connections recalculated Original: %d New Value %d plus additional 2 for administrative use !!!\n\n", originalConnections, moc.IncomingRequest.Connections)
 		message.MName = message.GetMessageText(ConnectionRecalculated)
 		message.MType = ConnectionRecalculated
 	}
 
-	return error, message, Families
+	return calcErr, message, Families
 }
 
 func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, map[string]Family) {
-	// message object to pass back
 	var responseMsg ResponseMessage
 	var family Family
 	var conf Configuration
-	var families map[string]Family
-	var ConfRequest ConfigurationRequest
 
-	ConfRequest = moc.IncomingRequest
-
+	ConfRequest := moc.IncomingRequest
 	conf.Init()
-	// If the conf request is NOT of type auto-scaling or auto calculating the connections, then get the conf request from the pre-defined
-	//TODO I don't like to hardcode things !! This must go away
-	if ConfRequest.Dimension.Id != 999 &&
-		ConfRequest.Dimension.Id != 998 &&
-		ConfRequest.Dimension.Name != "scaled" {
+
+	// Handle pre-defined configs
+	if ConfRequest.Dimension.Id != 999 && ConfRequest.Dimension.Id != 998 && ConfRequest.Dimension.Name != "scaled" {
 		ConfRequest = getConfForConfRequest(ConfRequest, conf)
 	}
-	families = family.Init(ConfRequest.DBType)
 
+	families := family.Init(ConfRequest.DBType)
 	responseMsg, connectionsOverload := moc.configurator.Init(ConfRequest, families, conf, responseMsg)
 
 	if connectionsOverload {
 		responseMsg.MName = "Resources Overload"
-		responseMsg.MText = "Too many connections for the chose dimension. Resource Overload, decrease number of connections OR choose higher CPUs value"
+		responseMsg.MText = "Too many connections for the chosen dimension. Resource Overload, decrease number of connections OR choose higher CPUs value"
 		families = make(map[string]Family)
 	} else {
-		// here is the calculation step
 		overUtilizing := false
 		moc.configurator.ProcessRequest()
 		responseMsg, overUtilizing = moc.configurator.EvaluateResources(responseMsg)
 
-		//if request overutilize resources WE DO NOT pass params but message
 		if overUtilizing {
 			families = make(map[string]Family)
-			err := fmt.Errorf(strconv.Itoa(responseMsg.MType) + ": " + responseMsg.MName + " " + responseMsg.MText)
-			if err != nil {
-				return err, responseMsg, families
-			}
+			return fmt.Errorf("%d: %s %s", responseMsg.MType, responseMsg.MName, responseMsg.MText), responseMsg, families
 		}
 	}
-
-	//fmt.Fprintf(os.Stdout, "\n%s\n", body)
 
 	return nil, responseMsg, families
 }
 
-// we loop the arrays to get all the info we may need for the operation using the ID as reference
 func getConfForConfRequest(request ConfigurationRequest, conf Configuration) ConfigurationRequest {
-
 	if request.Dimension.Id != DimensionOpen {
-		for i := 0; i < len(conf.Dimension); i++ {
-
+		for i := range conf.Dimension {
 			if request.Dimension.Id == conf.Dimension[i].Id {
 				request.Dimension = conf.Dimension[i]
 				break
 			}
 		}
 	} else {
-		//We need to calibrate the dimension on the base of an open request
 		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
 	}
 
-	for i := 0; i < len(conf.LoadType); i++ {
-
+	for i := range conf.LoadType {
 		if request.LoadType.Id == conf.LoadType[i].Id {
 			request.LoadType = conf.LoadType[i]
 			break
@@ -201,70 +160,62 @@ func getConfForConfRequest(request ConfigurationRequest, conf Configuration) Con
 
 func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family) error {
 	var b bytes.Buffer
-	//var err error
 
-	//if ConfRequest.Output == "json" {
-	//	b, err = GetJSONOutput(message, ConfRequest, families)
-	//} else {
-	//	b, err = GetHumanOutput(message, ConfRequest, families)
-	//}
-	//if err != nil {
-	//	return err
-	//}
+	// NOTE: You had formatting logic commented out here.
+	// If `b` remains empty, writer.Write(b.Bytes()) will write nothing.
 
-	// Return the information
-	writer.Header().Set("Content/Type", "application/json")
+	writer.Header().Set("Content-Type", "application/json")
 	writer.Write(b.Bytes())
 	return nil
 }
 
 func (moc *MysqlOperatorCalculator) GetHumanOutput(message ResponseMessage, request ConfigurationRequest, families map[string]Family) (bytes.Buffer, error) {
 	var b bytes.Buffer
-	var err error
-	// process one section a time
+
 	b.WriteString("[message]\n")
 	b.WriteString("name = " + message.MName + "\n")
 	b.WriteString("type = " + strconv.Itoa(message.MType) + "\n")
 	b.WriteString("text = " + message.MText + "\n")
 
-	family, _ := families[FamilyTypeMysql]
-	fb := family.ParseGroupsHuman()
-	b.Write(fb.Bytes())
+	if family, ok := families[FamilyTypeMysql]; ok {
+		my := family.ParseGroupsHuman()
+		b.Write(my.Bytes())
+	}
+	if family, ok := families[FamilyTypeProxy]; ok {
+		proxy := family.ParseGroupsHuman()
+		b.Write(proxy.Bytes())
+	}
+	if family, ok := families[FamilyTypeMonitor]; ok {
+		mon := family.ParseGroupsHuman()
+		b.Write(mon.Bytes())
+	}
 
-	family, _ = families[FamilyTypeProxy]
-	fb = family.ParseGroupsHuman()
-	b.Write(fb.Bytes())
-
-	family, _ = families[FamilyTypeMonitor]
-	fb = family.ParseGroupsHuman()
-	b.Write(fb.Bytes())
-
-	return b, err
+	return b, nil
 }
 
 func (moc *MysqlOperatorCalculator) GetJSONOutput(message ResponseMessage, ConfRequest ConfigurationRequest, families map[string]Family) (bytes.Buffer, error) {
-	//output, err := json.Marshal(&conf)
-	messageStream, err := json.MarshalIndent(message, "", "  ")
-	// we store incoming request for reference when passing back the configuration
-	processedRequest, err := json.MarshalIndent(&ConfRequest, "", "  ")
-
-	// We transform to Json all the calculated params
-	output, err := json.MarshalIndent(&families, "", "  ")
-
-	// Concatenate all into a single output
 	var b bytes.Buffer
-	b.WriteString(`{"request": {`)
-	b.WriteString(`"message":`)
-	b.Write(messageStream)
-	b.WriteString(`,"incoming":`)
-	b.Write(processedRequest)
-	b.WriteString(`,"answer":`)
-	b.Write(output)
-	b.WriteString("}}")
+
+	// Combine data into a single structured map/struct to marshal cleanly
+	responsePayload := struct {
+		Request struct {
+			Message  ResponseMessage      `json:"message"`
+			Incoming ConfigurationRequest `json:"incoming"`
+			Answer   map[string]Family    `json:"answer"`
+		} `json:"request"`
+	}{}
+
+	responsePayload.Request.Message = message
+	responsePayload.Request.Incoming = ConfRequest
+	responsePayload.Request.Answer = families
+
+	output, err := json.MarshalIndent(responsePayload, "", "  ")
 	if err != nil {
 		return b, err
 	}
-	return b, err
+
+	b.Write(output)
+	return b, nil
 }
 
 func (moc *MysqlOperatorCalculator) getSupported() Configuration {
@@ -282,65 +233,40 @@ func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfR
 	message.MType = ErrorexecI
 	message.MName = "Invalid incoming request"
 	message.MText = fmt.Sprintf(message.GetMessageText(message.MType), errorMessage)
-	err := ReturnResponse(writer, request, ConfRequest, message, families)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ReturnResponse(writer, request, ConfRequest, message, families)
 }
-
-//=====================================================
-//Families section
-//=====================================================
 
 // GetFamily retrieves the Family object corresponding to the given family name or returns an error if the name is invalid.
 func (moc *MysqlOperatorCalculator) GetFamily(familyname string) (Family, error) {
-	var family Family
-	var err1 error
-
-	if familyname == FamilyTypeMysql ||
-		familyname == FamilyTypeProxy ||
-		familyname == FamilyTypeMonitor {
-		return moc.configurator.families[familyname], err1
+	if familyname == FamilyTypeMysql || familyname == FamilyTypeProxy || familyname == FamilyTypeMonitor {
+		return moc.configurator.families[familyname], nil
 	}
-	err1 = errors.New("ERROR: Invalid Family name")
-	return family, err1
+	return Family{}, errors.New("ERROR: Invalid Family name")
 }
 
 // GetConfForConfRequest updates the incoming request configuration by applying matching dimensions and load types.
 func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
-
-	request := moc.IncomingRequest
-	conf := moc.Conf
-	if request.Dimension.Id != DimensionOpen {
-		for i := 0; i < len(conf.Dimension); i++ {
-
-			if request.Dimension.Id == conf.Dimension[i].Id {
-				request.Dimension = conf.Dimension[i]
+	if moc.IncomingRequest.Dimension.Id != DimensionOpen {
+		for i := range moc.Conf.Dimension {
+			if moc.IncomingRequest.Dimension.Id == moc.Conf.Dimension[i].Id {
+				moc.IncomingRequest.Dimension = moc.Conf.Dimension[i]
 				break
 			}
 		}
 	} else {
-		//We need to calibrate the dimension on the base of an open request
-		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
+		moc.IncomingRequest.Dimension = moc.Conf.CalculateOpenDimension(moc.IncomingRequest.Dimension)
 	}
 
-	for i := 0; i < len(conf.LoadType); i++ {
-
-		if request.Dimension.Id == conf.LoadType[i].Id {
-			request.LoadType = conf.LoadType[i]
+	for i := range moc.Conf.LoadType {
+		// BUG FIX: Originally compared `Dimension.Id` against `LoadType[i].Id`.
+		if moc.IncomingRequest.LoadType.Id == moc.Conf.LoadType[i].Id {
+			moc.IncomingRequest.LoadType = moc.Conf.LoadType[i]
 			break
 		}
 	}
-
-	moc.IncomingRequest = request
-
 }
 
-// adjustResourcesByProvider recalculates CPU and memory values based on the provider-specific cost percentage adjustment.
 func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
-
 	moc.IncomingRequest.Dimension.Cpu = int(float64(moc.IncomingRequest.Dimension.Cpu) * (1.0 - moc.IncomingRequest.ProviderCostPct))
 	moc.IncomingRequest.Dimension.MemoryBytes = float64(moc.IncomingRequest.Dimension.MemoryBytes) * (1.0 - moc.IncomingRequest.ProviderCostPct)
 	moc.IncomingRequest.Dimension.Memory = bytefmt.ByteSize(uint64(moc.IncomingRequest.Dimension.MemoryBytes))

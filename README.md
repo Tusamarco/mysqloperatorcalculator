@@ -212,224 +212,109 @@ Your (long) output will look like this:
     "example": "Shops online  up to 20% Writes "
   },
   "connections": 400,
-  "output": "json"
-},"answer":{
-  "monitor": {
-    "name": "pmm",
-    "groups": {
-      "livenessProbe": {
-        "name": "livenessProbe",
-        "parameters": {
-          "timeoutSeconds": {
-            "name": "timeoutSeconds",
-            "section": "",
-            "group": "readinessProbe",
-            "value": "27",
-            "default": "5",
-            "min": 5,
-            "max": 30
-          }
-        }
-      },
-      "readinessProbe": {
-        "name": "redinessProbe",
-        "parameters": {
-          "timeoutSeconds": {
-            "name": "timeoutSeconds",
-            "section": "",
-            "group": "readinessProbe",
-            "value": "27",
-            "default": "5",
-            "min": 5,
-            "max": 30
-          }
-        }
-      },
-      "resources": {
-        "name": "resources",
-        "parameters": {
-          "limit_cpu": {
-            "name": "cpu",
-            "section": "limit",
-            "group": "resources",
-            "value": "150",
-            "default": "1000",
-            "min": 100,
-            "max": 2000
-          },
-          "limit_memory": {
-            "name": "memory",
-            "section": "limit",
-            "group": "resources",
-            "value": "107374182",
-            "default": "!",
-            "min": 1,
-            "max": 2
-          },
-          "request_cpu": {
-            "name": "cpu",
-            "section": "request",
-            "group": "resources",
-            "value": "142",
-            "default": "1000",
-            "min": 100,
-            "max": 2000
-          },
-          "request_memory": {
-            "name": "memory",
-            "section": "request",
-            "group": "resources",
-            "value": "102005473",
-            "default": "1",
-            "min": 1,
-            "max": 2
-          }
-        }
-      }
-    }
-  },
-  "mysql": {
-    "name": "pxc",
-    "groups": {
-      "configuration_connection": {
-        "name": "connections",
-        "parameters": {
-          "binlog_cache_size": {
-            "name": "binlog_cache_size",
-            "section": "configuration",
-            "group": "connection",
-            "value": "131072",
-            "default": "32768",
-            "min": 32768,
-            "max": 0,
-            "mysqlversions": {
-              "min": {
-                "major": 8,
-                "minor": 0,
-                "patch": 30
-              },
-              "max": {
-                "major": 8,
-                "minor": 1,
-                "patch": 0
-              }
+  "output": "json",
+  "answer": {
+    "monitor": {
+      "name": "pmm",
+      "groups": {
+        "livenessProbe": {
+          "name": "livenessProbe",
+          "parameters": {
+            "timeoutSeconds": {
+              "name": "timeoutSeconds",
+              "value": "20"
             }
-          },
-          "binlog_stmt_cache_size": {
-            "name": "binlog_stmt_cache_size",
-            "section": "configuration",
-            "group": "connection",
-            "value": "131072",
-            "default": "32768",
-            "min": 32768,
-            "max": 0,
-            "mysqlversions": {
-              "min": {
-                "major": 8,
-                "minor": 0,
-                "patch": 30
-              },
-              "max": {
-                "major": 8,
-                "minor": 1,
-                "patch": 0
-              }
+          }
+        },
+        "readinessProbe": {
+          "name": "readinessProbe",
+          "parameters": {
+            "timeoutSeconds": {
+              "name": "timeoutSeconds",
+              "value": "20"
             }
-          },
-<snip ...>
-        }
-      }
-    }
-  },
-  "proxy": {
-    "name": "haproxy",
-    "groups": {
-      "ha_connection_timeout": {
-        "name": "ha_connection_timeout",
-        "parameters": {
-          "timeoutSeconds": {
-            "name": "timeoutSeconds",
-            "section": "",
-            "group": "ha_connection_timeout",
-            "value": "5",
-            "default": "1000",
-            "min": 1000,
-            "max": 5000
           }
-        }
-      },
-      "livenessProbe": {
-        "name": "livenessProbe",
-        "parameters": {
-          "timeoutSeconds": {
-            "name": "timeoutSeconds",
-            "section": "",
-            "group": "readinessProbe",
-            "value": "27",
-            "default": "5",
-            "min": 5,
-            "max": 30
-          }
-        }
-      },
-      "readinessProbe": {
-        "name": "redinessProbe",
-        "parameters": {
-          "timeoutSeconds": {
-            "name": "timeoutSeconds",
-            "section": "",
-            "group": "readinessProbe",
-            "value": "27",
-            "default": "5",
-            "min": 5,
-            "max": 30
-          }
-        }
-      },
-      "resources": {
-        "name": "resources",
-        "parameters": {
-          "limit_cpu": {
-            "name": "cpu",
-            "section": "limit",
-            "group": "resources",
-            "value": "150",
-            "default": "1000",
-            "min": 1000,
-            "max": 2000
-          },
-          "limit_memory": {
-            "name": "memory",
-            "section": "limit",
-            "group": "resources",
-            "value": "429496730",
-            "default": "!",
-            "min": 1,
-            "max": 2
-          },
-          "request_cpu": {
-            "name": "cpu",
-            "section": "request",
-            "group": "resources",
-            "value": "142",
-            "default": "1000",
-            "min": 1000,
-            "max": 2000
-          },
-          "request_memory": {
-            "name": "memory",
-            "section": "request",
-            "group": "resources",
-            "value": "408021893",
-            "default": "1",
-            "min": 1,
-            "max": 2
+        },
+        "resources": {
+          "name": "resources",
+          "parameters": {
+            "limit_cpu": {
+              "name": "cpu",
+              "value": "180m"
+            },
+            "limit_memory": {
+              "name": "memory",
+              "value": "96636764"
+            },
+            "request_cpu": {
+              "name": "cpu",
+              "value": "171m"
+            },
+            "request_memory": {
+              "name": "memory",
+              "value": "91804926"
+            }
           }
         }
       }
-    }
-  }
-}}}
+    },
+    "mysql": {
+      "name": "mysql",
+      "groups": {
+        "configuration_connection": {
+          "name": "connections",
+          "parameters": {
+            "binlog_cache_size": {
+              "name": "binlog_cache_size",
+              "value": "131072"
+            },
+            "binlog_stmt_cache_size": {
+              "name": "binlog_stmt_cache_size",
+              "value": "131072"
+            },
+            "join_buffer_size": {
+              "name": "join_buffer_size",
+              "value": "524288"
+            },
+            "max_heap_table_size": {
+              "name": "max_heap_table_size",
+              "value": "16777216"
+            },
+            "read_rnd_buffer_size": {
+              "name": "read_rnd_buffer_size",
+              "value": "393216"
+            },
+            "sort_buffer_size": {
+              "name": "sort_buffer_size",
+              "value": "524288"
+            },
+            "tmp_table_size": {
+              "name": "tmp_table_size",
+              "value": "16777216"
+            }
+          }
+        },
+        "configuration_groupReplication": {
+          "name": "groupReplication",
+          "parameters": {
+            "loose_group_replication_autorejoin_tries": {
+              "name": "loose_group_replication_autorejoin_tries",
+              "value": "6"
+            },
+            "loose_group_replication_communication_max_message_size": {
+              "name": "loose_group_replication_communication_max_message_size",
+              "value": "10485760"
+            },
+            "loose_group_replication_flow_control_period": {
+              "name": "loose_group_replication_flow_control_period",
+              "value": "2"
+            },
+            "loose_group_replication_member_expel_timeout": {
+              "name": "loose_group_replication_member_expel_timeout",
+              "value": "10"
+            },
+            <snip> ...
+
 ```
 #### Message
 The first section you will see is `message`
