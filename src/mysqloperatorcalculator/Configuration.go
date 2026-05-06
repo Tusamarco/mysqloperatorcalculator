@@ -62,16 +62,6 @@ const (
 	MinLimitGR             = 0.40
 	MemoryFreeMinimumLimit = 0.06
 
-	// Innodb % on memory allocation
-	InnoDBPctValuePXC = 0.80
-	InnoDBPctValueGR  = 0.68
-
-	// groupreplication
-	/*
-		This is a bit MaboJambo about GR, apparently we have 50MB cost per transaction which we must use in the memory consumption calculation
-	*/
-	GroupRepGCSCacheMemStructureCost = 52428800
-
 	/* Minlimit is the % of memory assigned to Innodb buffer pool compared to the total memory assigned to mysql
 	We have different min limit per type of replication (galera and Group replication) because the different impact of the internal cache.
 	In GR the certification cache is suffering of an issue. In short the certification cache is clean/flushed on commit, but if the operation is a long one like insert into A from select * from b ;
@@ -81,11 +71,7 @@ const (
 	as such we need to allocate less memory to innodb and more to buffers.
 	By consequence the % of innodb memory for galera is higher than GR
 	*/
-	MinLimitPXC = 0.45 // <-------------------- LOAD factor
-	MinLimitGR  = 0.40 // <-------------------- LOAD factor
-
 	// MemoryFreeMinimumLimit This is the amount of memory in % that we must keep free no matter what to give some space to the server
-	MemoryFreeMinimumLimit = 0.06
 
 	// Weight to use when using PXC for Gcache in mem footprint
 	GcacheFootPrintFactorRead       = 0.5
@@ -108,9 +94,6 @@ const (
 
 	ConnectionWeighPctLimit = 0.50
 	MinConnectionNumber     = 20
-	// Autoscaling dimension
-	CPUIncrement    = 500
-	MemoryIncrement = 500
 
 	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
 	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
@@ -121,19 +104,6 @@ const (
 	- read/write 50/50
 	*/
 	// Global
-	// TODO move this to configuration to easy tune
-	CpuConncetionMillFactorRead           = 1.2 // <-------------------- LOAD factor
-	CpuConncetionMillFactorReadWriteLight = 2.2 // <-------------------- LOAD factor
-	CpuConncetionMillFactorReadWriteEqual = 3.6 // <-------------------- LOAD factor
-	CpuConncetionMillFactorReadWriteHeavy = 4   // <-------------------- LOAD factor
-
-	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
-	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
-	*/
-	ConnectionWeighPctLimit = 0.50
-
-	//Minimum number of connection
-	MinConnectionNumber = 20
 )
 
 //*********************************
@@ -359,9 +329,6 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "134217728", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "5097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "15", "5", 0, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_poll_spin_loops":                {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_paxos_single_leader":            {"loose_group_replication_paxos_single_leader", "configuration", "groupReplication", "ON", "OFF", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_binlog_transaction_dependency_tracking":           {"loose_binlog_transaction_dependency_tracking", "configuration", "groupReplication", "WRITESET", "COMMIT_ORDER", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 3, 0}}},
 		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_poll_spin_loops": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
@@ -468,7 +435,6 @@ func (pP *ProviderParam) Init() map[string]ProviderParam {
 // ParseGroupsHuman returns all the groups in the family in one shot as a byte buffer
 func (f Family) ParseGroupsHuman() bytes.Buffer {
 	var b bytes.Buffer
-	skipCommon := false
 	padding := "    "
 	fmt.Fprintf(&b, "[%s]\n", f.Name)
 
@@ -481,7 +447,7 @@ func (f Family) ParseGroupsHuman() bytes.Buffer {
 
 	// 2. Iterate in alphabetical order
 	for _, key := range keys {
-		if skipCommon || (key == "readinessProbe" || key == "livenessProbe" || key == "resources") {
+		if key == "readinessProbe" || key == "livenessProbe" || key == "resources" {
 			continue
 		}
 

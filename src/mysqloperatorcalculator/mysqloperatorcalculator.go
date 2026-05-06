@@ -277,39 +277,39 @@ func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
 }
 
 // GetConfForConfRequest updates the incoming request configuration by applying matching dimensions and load types.
-func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
-
-	request := moc.IncomingRequest
-	conf := moc.Conf
-	if request.Dimension.Id != DimensionOpen {
-		for i := 0; i < len(conf.Dimension); i++ {
-
-			if request.Dimension.Id == conf.Dimension[i].Id {
-				request.Dimension = conf.Dimension[i]
-				break
-			}
-		}
-	} else {
-		//We need to calibrate the dimension on the base of an open request
-		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
-	}
-
-	for i := 0; i < len(conf.LoadType); i++ {
-
-		if request.Dimension.Id == conf.LoadType[i].Id {
-			request.LoadType = conf.LoadType[i]
-			break
-		}
-	}
-
-	moc.IncomingRequest = request
-
-}
+//func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
+//
+//	request := moc.IncomingRequest
+//	conf := moc.Conf
+//	if request.Dimension.Id != DimensionOpen {
+//		for i := 0; i < len(conf.Dimension); i++ {
+//
+//			if request.Dimension.Id == conf.Dimension[i].Id {
+//				request.Dimension = conf.Dimension[i]
+//				break
+//			}
+//		}
+//	} else {
+//		//We need to calibrate the dimension on the base of an open request
+//		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
+//	}
+//
+//	for i := 0; i < len(conf.LoadType); i++ {
+//
+//		if request.Dimension.Id == conf.LoadType[i].Id {
+//			request.LoadType = conf.LoadType[i]
+//			break
+//		}
+//	}
+//
+//	moc.IncomingRequest = request
+//
+//}
 
 // adjustResourcesByProvider recalculates CPU and memory values based on the provider-specific cost percentage adjustment.
-func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
-
-	moc.IncomingRequest.Dimension.Cpu = int(float64(moc.IncomingRequest.Dimension.Cpu) * (1.0 - moc.IncomingRequest.ProviderCostPct))
-	moc.IncomingRequest.Dimension.MemoryBytes = float64(moc.IncomingRequest.Dimension.MemoryBytes) * (1.0 - moc.IncomingRequest.ProviderCostPct)
-	moc.IncomingRequest.Dimension.Memory = bytefmt.ByteSize(uint64(moc.IncomingRequest.Dimension.MemoryBytes))
-}
+//func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
+//
+//	moc.IncomingRequest.Dimension.Cpu = int(float64(moc.IncomingRequest.Dimension.Cpu) * (1.0 - moc.IncomingRequest.ProviderCostPct))
+//	moc.IncomingRequest.Dimension.MemoryBytes = float64(moc.IncomingRequest.Dimension.MemoryBytes) * (1.0 - moc.IncomingRequest.ProviderCostPct)
+//	moc.IncomingRequest.Dimension.Memory = bytefmt.ByteSize(uint64(moc.IncomingRequest.Dimension.MemoryBytes))
+//}
