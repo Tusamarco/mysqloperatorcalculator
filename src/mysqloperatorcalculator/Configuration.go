@@ -62,10 +62,37 @@ const (
 	MinLimitGR             = 0.40
 	MemoryFreeMinimumLimit = 0.06
 
+	// Innodb % on memory allocation
+	InnoDBPctValuePXC = 0.80
+	InnoDBPctValueGR  = 0.68
+
+	// groupreplication
+	/*
+		This is a bit MaboJambo about GR, apparently we have 50MB cost per transaction which we must use in the memory consumption calculation
+	*/
+	GroupRepGCSCacheMemStructureCost = 52428800
+
+	/* Minlimit is the % of memory assigned to Innodb buffer pool compared to the total memory assigned to mysql
+	We have different min limit per type of replication (galera and Group replication) because the different impact of the internal cache.
+	In GR the certification cache is suffering of an issue. In short the certification cache is clean/flushed on commit, but if the operation is a long one like insert into A from select * from b ;
+	and we have large dataset, this may cause the cache buffer to be very large and causing issues like swap or OOM kill.
+	While we cannot prevent this to happen, we need to consider the possible impact of it.
+	Also other caches used by GR and more frequently cleanup are causing higher memory consumption than galera.
+	as such we need to allocate less memory to innodb and more to buffers.
+	By consequence the % of innodb memory for galera is higher than GR
+	*/
+	MinLimitPXC = 0.45 // <-------------------- LOAD factor
+	MinLimitGR  = 0.40 // <-------------------- LOAD factor
+
+	// MemoryFreeMinimumLimit This is the amount of memory in % that we must keep free no matter what to give some space to the server
+	MemoryFreeMinimumLimit = 0.06
+
+	// Weight to use when using PXC for Gcache in mem footprint
 	GcacheFootPrintFactorRead       = 0.5
 	GcacheFootPrintFactorLightWrite = 0.6
 	GcacheFootPrintFactorReadWrite  = 0.8
 
+	// Weights to use to tune the GCS calculation
 	GCSWeightRead           = 0.20
 	GCSWeightReadLightWrite = 0.50
 	GCSWeightReadWrite      = 0.60
@@ -81,6 +108,32 @@ const (
 
 	ConnectionWeighPctLimit = 0.50
 	MinConnectionNumber     = 20
+	// Autoscaling dimension
+	CPUIncrement    = 500
+	MemoryIncrement = 500
+
+	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
+	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
+	if the number of CPUmill/CpuConncetionMillFactor > Connection asked we are overloading the platform
+	We hace 3 different load factors:
+	- mainly read
+	- read/write 80/20
+	- read/write 50/50
+	*/
+	// Global
+	// TODO move this to configuration to easy tune
+	CpuConncetionMillFactorRead           = 1.2 // <-------------------- LOAD factor
+	CpuConncetionMillFactorReadWriteLight = 2.2 // <-------------------- LOAD factor
+	CpuConncetionMillFactorReadWriteEqual = 3.6 // <-------------------- LOAD factor
+	CpuConncetionMillFactorReadWriteHeavy = 4   // <-------------------- LOAD factor
+
+	/* this is the limit in % of how much the total of the connections can weight agaist the memory utilization.
+	TODO: The value may benefit of an additional adjustment parameter, like a trimmer on the tot ammount of the memory used.
+	*/
+	ConnectionWeighPctLimit = 0.50
+
+	//Minimum number of connection
+	MinConnectionNumber = 20
 )
 
 //*********************************
@@ -309,6 +362,14 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"loose_group_replication_poll_spin_loops":                {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_paxos_single_leader":            {"loose_group_replication_paxos_single_leader", "configuration", "groupReplication", "ON", "OFF", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_binlog_transaction_dependency_tracking":           {"loose_binlog_transaction_dependency_tracking", "configuration", "groupReplication", "WRITESET", "COMMIT_ORDER", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 3, 0}}},
+		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_poll_spin_loops": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_paxos_single_leader":  {"loose_group_replication_paxos_single_leader", "configuration", "groupReplication", "ON", "OFF", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_binlog_transaction_dependency_tracking": {"loose_binlog_transaction_dependency_tracking", "configuration", "groupReplication", "WRITESET", "COMMIT_ORDER", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 3, 0}}},
+		//"loose_group_replication_view_change_uuid":               {"loose_group_replication_view_change_uuid", "configuration", "groupReplication", "AUTOMATIC", "AUTOMATIC", 0, 0},
+		//"loose_group_replication_exit_state_action":              {"loose_group_replication_exit_state_action", "configuration", "groupReplication", "READ_ONLY", "READ_ONLY", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+
 	}
 
 	mysqlGroups := map[string]GroupObj{

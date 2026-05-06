@@ -77,7 +77,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	}
 
 	// Auto calculation of the connections
-	if moc.IncomingRequest.Connections == 0 {
+	if moc.IncomingRequest.Connections == 0 { //|| moc.IncomingRequest.Dimension.Id == DimensionOpen {
 		moc.IncomingRequest.Connections = MinConnectionNumber
 		for message.MType != OverutilizingI {
 			moc.IncomingRequest.Connections += 10
@@ -236,6 +236,10 @@ func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfR
 	return ReturnResponse(writer, request, ConfRequest, message, families)
 }
 
+//=====================================================
+//Families section
+//=====================================================
+
 // GetFamily retrieves the Family object corresponding to the given family name or returns an error if the name is invalid.
 func (moc *MysqlOperatorCalculator) GetFamily(familyname string) (Family, error) {
 	if familyname == FamilyTypeMysql || familyname == FamilyTypeProxy || familyname == FamilyTypeMonitor {
@@ -267,6 +271,44 @@ func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
 }
 
 func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
+	moc.IncomingRequest.Dimension.Cpu = int(float64(moc.IncomingRequest.Dimension.Cpu) * (1.0 - moc.IncomingRequest.ProviderCostPct))
+	moc.IncomingRequest.Dimension.MemoryBytes = float64(moc.IncomingRequest.Dimension.MemoryBytes) * (1.0 - moc.IncomingRequest.ProviderCostPct)
+	moc.IncomingRequest.Dimension.Memory = bytefmt.ByteSize(uint64(moc.IncomingRequest.Dimension.MemoryBytes))
+}
+
+// GetConfForConfRequest updates the incoming request configuration by applying matching dimensions and load types.
+func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
+
+	request := moc.IncomingRequest
+	conf := moc.Conf
+	if request.Dimension.Id != DimensionOpen {
+		for i := 0; i < len(conf.Dimension); i++ {
+
+			if request.Dimension.Id == conf.Dimension[i].Id {
+				request.Dimension = conf.Dimension[i]
+				break
+			}
+		}
+	} else {
+		//We need to calibrate the dimension on the base of an open request
+		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
+	}
+
+	for i := 0; i < len(conf.LoadType); i++ {
+
+		if request.Dimension.Id == conf.LoadType[i].Id {
+			request.LoadType = conf.LoadType[i]
+			break
+		}
+	}
+
+	moc.IncomingRequest = request
+
+}
+
+// adjustResourcesByProvider recalculates CPU and memory values based on the provider-specific cost percentage adjustment.
+func (moc *MysqlOperatorCalculator) adjustResourcesByProvider() {
+
 	moc.IncomingRequest.Dimension.Cpu = int(float64(moc.IncomingRequest.Dimension.Cpu) * (1.0 - moc.IncomingRequest.ProviderCostPct))
 	moc.IncomingRequest.Dimension.MemoryBytes = float64(moc.IncomingRequest.Dimension.MemoryBytes) * (1.0 - moc.IncomingRequest.ProviderCostPct)
 	moc.IncomingRequest.Dimension.Memory = bytefmt.ByteSize(uint64(moc.IncomingRequest.Dimension.MemoryBytes))
