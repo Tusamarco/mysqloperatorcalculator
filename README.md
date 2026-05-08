@@ -1,7 +1,3 @@
-Here is a refined and improved Markdown version of the documentation. I have corrected the formatting, fixed the broken and duplicated Go code blocks, improved the structural hierarchy, and enhanced overall readability so it is ready to be used as a polished `README.md` or official documentation.
-
-***
-
 # MySQL Operator Calculator
 
 ## 📖 Overview
