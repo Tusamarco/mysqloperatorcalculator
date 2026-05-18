@@ -120,8 +120,8 @@ MinLimitGR         = 0.40
 Clone the repository and build the binary:
 ```bash
 git clone https://github.com/Tusamarco/mysqloperatorcalculator
-cd mysqloperatorcalculator/src
-go build -o mysqloperatorcalculator .
+cd mysqloperatorcalculator
+go build -o mysqloperatorcalculator ./src
 ```
 
 ### Command‑Line Flags
