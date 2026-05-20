@@ -150,7 +150,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memoryMySQL
 	if conWeight < ConnectionWeighPctLimit {
 		c.getInnodbRedolog()
-		c.getInnodbBufferPool()
+		c.getInnodbBufferPool(false)
 
 		if c.request.DBType == "pxc" {
 			c.getGcache()
@@ -170,6 +170,9 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			group.Parameters["loose_group_replication_message_cache_size"] = c.getGCScache(group.Parameters["loose_group_replication_message_cache_size"])
 			c.families["mysql"].Groups["configuration_groupReplication"] = group
 		}
+
+		// Before returning the values we want tore recover any left over from the memory and assign back to the buffer pool by a %
+		c.getInnodbBufferPool(true)
 
 		c.getProbesAndResources(FamilyTypeMysql)
 		c.getProbesAndResources(FamilyTypeProxy)
@@ -237,8 +240,8 @@ func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
 
 func (c *Configurator) getConnectionBuffers() {
 	group := c.families["mysql"].Groups["configuration_connection"]
-	group.Parameters["binlog_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_cache_size"])
-	group.Parameters["binlog_stmt_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_stmt_cache_size"])
+	//group.Parameters["binlog_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_cache_size"])
+	//group.Parameters["binlog_stmt_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_stmt_cache_size"])
 	group.Parameters["join_buffer_size"] = c.paramJoinBuffer(group.Parameters["join_buffer_size"])
 	group.Parameters["read_rnd_buffer_size"] = c.paramReadRndBuffer(group.Parameters["read_rnd_buffer_size"])
 	group.Parameters["sort_buffer_size"] = c.paramSortBuffer(group.Parameters["sort_buffer_size"])
@@ -406,17 +409,22 @@ func (c *Configurator) getGcacheLoad() float64 {
 	}
 }
 
-func (c *Configurator) getInnodbBufferPool() {
+func (c *Configurator) getInnodbBufferPool(final bool) {
 	group := c.families["mysql"].Groups["configuration_innodb"]
-	group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"])
-	group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
+
+	if !final {
+		group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"], final)
+		group.Parameters["innodb_buffer_pool_instances"] = c.paramInnoDBBufferPoolInstances(group.Parameters["innodb_buffer_pool_instances"])
+	} else {
+		group.Parameters["innodb_buffer_pool_size"] = c.paramInnoDBBufferPool(group.Parameters["innodb_buffer_pool_size"], final)
+	}
 	c.families["mysql"].Groups["configuration_innodb"] = group
 }
 
 func (c *Configurator) getInnodbParameters() {
 	group := c.families["mysql"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
-	group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
+	//group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
 	group.Parameters["innodb_purge_threads"] = c.paramInnoDPurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
 	group.Parameters["innodb_parallel_read_threads"] = c.paramInnoDBinnodb_parallel_read_threads(group.Parameters["innodb_parallel_read_threads"])
@@ -428,7 +436,7 @@ func (c *Configurator) getGroupReplicationParameters() {
 	group.Parameters["loose_group_replication_member_expel_timeout"] = c.paramGroupReplicationMemberExpelTimeout(group.Parameters["loose_group_replication_member_expel_timeout"])
 	group.Parameters["loose_group_replication_autorejoin_tries"] = c.paramGroupReplicationAutorejoinTries(group.Parameters["loose_group_replication_autorejoin_tries"])
 	group.Parameters["loose_group_replication_communication_max_message_size"] = c.paramGroupReplicationMessageMaxSize(group.Parameters["loose_group_replication_communication_max_message_size"])
-	group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
+	//group.Parameters["loose_group_replication_poll_spin_loops"] = c.paramGroupReplicationPollSpinLoops(group.Parameters["loose_group_replication_poll_spin_loops"])
 	group.Parameters["loose_group_replication_flow_control_period"] = c.paramGroupReplicationFlowControlPeriod(group.Parameters["loose_group_replication_flow_control_period"])
 	c.families["mysql"].Groups["configuration_groupReplication"] = group
 }
@@ -442,19 +450,60 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 	return parameter
 }
 
-func (c *Configurator) paramInnoDBBufferPool(parameter Parameter) Parameter {
+func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Parameter {
 	bufferPollPct := InnoDBPctValueGR
 	if c.request.DBType == "pxc" {
 		bufferPollPct = InnoDBPctValuePXC
 	}
 
-	bufferPool := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
-	bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValuePXC))
+	if !final {
+		bufferPool := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
+		bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValuePXC))
 
-	parameter.Value = strconv.FormatInt(bufferPool, 10)
-	c.reference.innoDBbpSize = bufferPool
-	c.reference.memoryLeftover -= bufferPoolSubstract
+		parameter.Value = strconv.FormatInt(bufferPool, 10)
+		c.reference.innoDBbpSize = bufferPool
+		c.reference.memoryLeftover -= bufferPoolSubstract
+	} else {
+		reassignFreeMemory := c.CalculateReturnBytes(c.reference.memoryLeftover)
+		bufferPool := c.reference.innoDBbpSize + reassignFreeMemory
+		parameter.Value = strconv.FormatInt(bufferPool, 10)
+		c.reference.innoDBbpSize = bufferPool
+		c.reference.memoryLeftover -= reassignFreeMemory
+
+	}
 	return parameter
+}
+
+// CalculateReturnBytes determines the number of bytes to return based on input size.
+func (c *Configurator) CalculateReturnBytes(incomingBytes int64) int64 {
+	Megabyte := 1024 * 1024
+	Gigabyte := 1024 * Megabyte
+
+	MinThreshold := int64(300 * Megabyte)
+	MaxThreshold := int64(2 * Gigabyte)
+
+	MinPercent := 0.50 // 50%
+	MaxPercent := 0.99 // 99%
+
+	// 1. Handle the minimum threshold (300 MB or below = 50%)
+	if incomingBytes <= MinThreshold {
+		return int64(float64(incomingBytes) * MinPercent)
+	}
+
+	// 2. Handle the maximum threshold (2 GB or above = 99%)
+	if incomingBytes >= MaxThreshold {
+		return int64(float64(incomingBytes) * MaxPercent)
+	}
+
+	// 3. Linearly interpolate the percentage for anything in between
+	// Calculate how far along the input is between the min and max thresholds (0.0 to 1.0)
+	progress := float64(incomingBytes-MinThreshold) / float64(MaxThreshold-MinThreshold)
+
+	// Apply that progress to our percentage range (0.50 to 0.99)
+	percentage := MinPercent + (progress * (MaxPercent - MinPercent))
+
+	// Calculate and return the final byte count
+	return int64(float64(incomingBytes) * percentage)
 }
 
 func (c *Configurator) paramInnoDBBufferPoolInstances(parameter Parameter) Parameter {
@@ -476,6 +525,10 @@ func (c *Configurator) paramInnoDBBufferPoolInstances(parameter Parameter) Param
 		parameter.Value = "1"
 	}
 
+	if instances > 64 {
+		instances = 64
+		parameter.Value = strconv.Itoa(instances)
+	}
 	c.reference.innoDBBPInstances = instances
 	return parameter
 }
@@ -521,11 +574,11 @@ func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
 func (c *Configurator) getServerParameters() {
 	group := c.families["mysql"].Groups["configuration_server"]
 	group.Parameters["max_connections"] = c.paramServerMaxConnections(group.Parameters["max_connections"])
-	group.Parameters["thread_pool_size"] = c.paramServerThreadPool(group.Parameters["thread_pool_size"])
-	group.Parameters["table_definition_cache"] = c.paramServerTableDefinitionCache(group.Parameters["table_definition_cache"])
-	group.Parameters["table_open_cache"] = c.paramServerTableOpenCache(group.Parameters["table_open_cache"])
-	group.Parameters["thread_stack"] = c.paramServerThreadStack(group.Parameters["thread_stack"])
-	group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstances(group.Parameters["table_open_cache_instances"])
+	//group.Parameters["thread_pool_size"] = c.paramServerThreadPool(group.Parameters["thread_pool_size"])
+	//group.Parameters["table_definition_cache"] = c.paramServerTableDefinitionCache(group.Parameters["table_definition_cache"])
+	//group.Parameters["table_open_cache"] = c.paramServerTableOpenCache(group.Parameters["table_open_cache"])
+	//group.Parameters["thread_stack"] = c.paramServerThreadStack(group.Parameters["thread_stack"])
+	//group.Parameters["table_open_cache_instances"] = c.paramServerTableOpenCacheInstances(group.Parameters["table_open_cache_instances"])
 	group.Parameters["thread_cache_size"] = c.paramServerThreadCacheSize(group.Parameters["thread_cache_size"])
 	c.families["mysql"].Groups["configuration_server"] = group
 }
@@ -722,6 +775,8 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Paramet
 
 	if cpus > 2 && cpus < 256 {
 		threads = cpus
+	} else if cpus > 256 {
+		threads = 256
 	}
 	parameter.Value = strconv.Itoa(threads)
 	return parameter
@@ -866,8 +921,7 @@ func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter Param
 }
 
 func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter {
-	maxConn := c.request.Connections
-	val := (maxConn / MinConnectionNumber) + 8
+	val := c.request.Connections
 	if val > int(parameter.Max) {
 		val = int(parameter.Max)
 	}
