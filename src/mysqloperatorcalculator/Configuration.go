@@ -54,13 +54,13 @@ const (
 	ResultOutputFormatHuman = "human"
 
 	InnoDBPctValuePXC = 0.80
-	InnoDBPctValueGR  = 0.68
+	InnoDBPctValueGR  = 0.70
 
 	GroupRepGCSCacheMemStructureCost = 52428800
 
-	MinLimitPXC            = 0.45
+	MinLimitPXC            = 0.50
 	MinLimitGR             = 0.40
-	MemoryFreeMinimumLimit = 0.00
+	MemoryFreeMinimumLimit = 0.02
 
 	/* Minlimit is the % of memory assigned to Innodb buffer pool compared to the total memory assigned to mysql
 	We have different min limit per type of replication (galera and Group replication) because the different impact of the internal cache.
@@ -78,19 +78,21 @@ const (
 	GcacheFootPrintFactorLightWrite = 0.6
 	GcacheFootPrintFactorReadWrite  = 0.8
 
-	// Weights to use to tune the GCS calculation
-	GCSWeightRead           = 0.20
-	GCSWeightReadLightWrite = 0.50
-	GCSWeightReadWrite      = 0.60
-	GCSWeightReadHeavyWrite = 1
+	// Weights to use to tune the GCS calculation against connections
+	GCSConnWeight = 10 //each connection costs 10 millicycles
+	// TODO Deprecated
+	//GCSWeightRead           = 0.40
+	//GCSWeightReadLightWrite = 0.60
+	//GCSWeightReadWrite      = 1.20
+	//GCSWeightReadHeavyWrite = 1
 
-	CPUIncrement    = 500
+	CPUIncrement    = 200
 	MemoryIncrement = 500
 
-	CpuConncetionMillFactorRead           = 1.2
-	CpuConncetionMillFactorReadWriteLight = 2.2
-	CpuConncetionMillFactorReadWriteEqual = 3.6
-	CpuConncetionMillFactorReadWriteHeavy = 4
+	CpuConncetionMillFactorRead           = 0.8
+	CpuConncetionMillFactorReadWriteLight = 1.2
+	CpuConncetionMillFactorReadWriteEqual = 1.6
+	CpuConncetionMillFactorReadWriteHeavy = 2
 
 	ConnectionWeighPctLimit = 0.50
 	MinConnectionNumber     = 20
@@ -326,7 +328,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	groupReplicationGroup := map[string]Parameter{
 		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_flow_control_period":            {"loose_group_replication_flow_control_period", "configuration", "groupReplication", "1", "1", 1, 5, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "134217728", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "1073741824", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "5097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "15", "5", 0, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
 		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},

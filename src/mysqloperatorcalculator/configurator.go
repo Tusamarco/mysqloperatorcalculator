@@ -308,12 +308,12 @@ func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
 func (c *Configurator) calculateTmpTableFootprint(inParameter Parameter) {
 	c.reference.tmpTableFootprint, _ = strconv.ParseInt(inParameter.Value, 10, 64)
 
-	multiplier := 0.03
+	multiplier := 0.2
 	switch c.reference.loadID {
 	case LoadTypeSomeWrites:
-		multiplier = 0.01
+		multiplier = 0.1
 	case LoadTypeEqualReadsWrites:
-		multiplier = 0.04
+		multiplier = 0.3
 	case LoadTypeHeavyWrites:
 		multiplier = 0.05
 	}
@@ -464,11 +464,23 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 		c.reference.innoDBbpSize = bufferPool
 		c.reference.memoryLeftover -= bufferPoolSubstract
 	} else {
-		reassignFreeMemory := c.CalculateReturnBytes(c.reference.memoryLeftover)
-		bufferPool := c.reference.innoDBbpSize + reassignFreeMemory
+		bufferPool := int64(0)
+
+		// We identify if the allocations have brought the memory to be negative in that case we can only take it back
+		// from the bufferpool
+		if c.reference.memoryLeftover > 0 {
+			reassignFreeMemory := c.CalculateReturnBytes(c.reference.memoryLeftover)
+			bufferPool = c.reference.innoDBbpSize + reassignFreeMemory
+			c.reference.memoryLeftover -= reassignFreeMemory
+		} else {
+			// I know is cumbersome and I can simply use the "+" operand, but that will confuse reading
+			// the memory left over at this point is expected to be negative
+			bufferPool = c.reference.innoDBbpSize - int64(math.Abs(float64(c.reference.memoryLeftover)))
+			c.reference.memoryLeftover = 0
+		}
+
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
 		c.reference.innoDBbpSize = bufferPool
-		c.reference.memoryLeftover -= reassignFreeMemory
 
 	}
 	return parameter
@@ -482,8 +494,8 @@ func (c *Configurator) CalculateReturnBytes(incomingBytes int64) int64 {
 	MinThreshold := int64(300 * Megabyte)
 	MaxThreshold := int64(2 * Gigabyte)
 
-	MinPercent := 0.50 // 50%
-	MaxPercent := 0.99 // 99%
+	MinPercent := 0.20 // 50%
+	MaxPercent := 0.85 // 90%
 
 	// 1. Handle the minimum threshold (300 MB or below = 50%)
 	if incomingBytes <= MinThreshold {
@@ -783,27 +795,36 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Paramet
 }
 
 func (c *Configurator) getGCScache(parameter Parameter) Parameter {
-	mem := float64(c.reference.memoryLeftover) - (c.reference.memoryMySQL * MemoryFreeMinimumLimit)
-	mem -= GroupRepGCSCacheMemStructureCost
+	/*
+		This calculation should be done against the running connections not against the load type
+		considering the cost of connection x how much of the group_replication_message_cache_size
+		we can use considering the maximum the default?
+	*/
 
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads:
-		mem *= GCSWeightRead
-	case LoadTypeSomeWrites:
-		mem *= GCSWeightReadLightWrite
-	case LoadTypeEqualReadsWrites:
-		mem *= GCSWeightReadWrite
-	case LoadTypeHeavyWrites:
-		mem *= GCSWeightReadHeavyWrite
-	}
+	mem, _ := strconv.ParseFloat(parameter.Default, 64)
 
-	mem *= float64(c.reference.loadFactor)
+	gcsFactor := float64(c.reference.connections) / float64(c.reference.cpus/GCSConnWeight)
+	mem *= gcsFactor
+
+	// TODO deprecated
+	//switch c.reference.loadID {
+	//case LoadTypeMostlyReads:
+	//	mem *= GCSWeightRead
+	//case LoadTypeSomeWrites:
+	//	mem *= GCSWeightReadLightWrite
+	//case LoadTypeEqualReadsWrites:
+	//	mem *= GCSWeightReadWrite
+	//case LoadTypeHeavyWrites:
+	//	mem *= GCSWeightReadHeavyWrite
+	//}
+
+	//mem *= float64(c.reference.loadFactor)
 	val := parameter.Min
 
 	if uint64(mem) >= val {
 		parameter.Value = strconv.FormatUint(uint64(mem), 10)
 	} else {
-		parameter.Value = strconv.FormatUint(val, 10)
+		parameter.Value = strconv.FormatUint(val*2, 10)
 	}
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
@@ -937,23 +958,24 @@ func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b b
 		minlimit = float64(MinLimitGR)
 	}
 
-	if c.reference.memoryLeftover <= 0 {
-		overUtilizing = true
-		pct = 0.0
-	} else {
-		minMemoryAccepted := int64(c.reference.memory * MemoryFreeMinimumLimit)
-		if c.reference.memoryLeftover < minMemoryAccepted {
-			overUtilizing = true
-			pct = 0.0
-		}
-	}
+	// Not used anymore the memory leftover is managed dealing with the Bufferpool size
+	//if c.reference.memoryLeftover < 0 {
+	//	overUtilizing = true
+	//	pct = 0.0
+	//} else {
+	//	minMemoryAccepted := int64(c.reference.memory * MemoryFreeMinimumLimit)
+	//	if c.reference.memoryLeftover < minMemoryAccepted {
+	//		overUtilizing = true
+	//		pct = 0.0
+	//	}
+	//}
 
 	if pct < minlimit {
 		msg.MType = OverutilizingI
 		msg.MText = "Request cancelled not enough resources details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
 		overUtilizing = true
-	} else if pct <= 0.65 {
+	} else if pct <= minlimit+0.10 {
 		msg.MType = ClosetolimitI
 		msg.MText = "Request processed however not optimal details: " + b.String()
 		msg.MName = msg.GetMessageText(msg.MType)
