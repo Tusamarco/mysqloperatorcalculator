@@ -158,6 +158,7 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 
 		c.getInnodbParameters()
 		c.getServerParameters()
+		c.getReplicationParameters()
 
 		if c.request.DBType == "pxc" {
 			c.getGaleraParameters()
@@ -986,4 +987,28 @@ func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b b
 	}
 
 	return msg, overUtilizing
+}
+
+func (c *Configurator) getReplicationParameters() {
+	group := c.families["mysql"].Groups["configuration_replica"]
+	group.Parameters["replica_parallel_workers"] = c.paramReplicaParallelWorkers(group.Parameters["replica_parallel_workers"])
+
+	c.families["mysql"].Groups["configuration_replica"] = group
+}
+
+// paramReplicaParallelWorkers adjusts the "replica_parallel_workers" parameter value based on available CPU resources.
+// Following the formula of 2.5 workers for available 1000 cpu
+func (c *Configurator) paramReplicaParallelWorkers(parameter Parameter) Parameter {
+	cpu := c.reference.cpusMySQL
+	value, _ := strconv.Atoi(parameter.Default)
+
+	if cpu > 1000 {
+		proposedWorkers := int((cpu / 1000) * 2.5)
+		if proposedWorkers > value {
+			value = proposedWorkers
+		}
+	}
+	parameter.Value = strconv.Itoa(value)
+	return parameter
+
 }
