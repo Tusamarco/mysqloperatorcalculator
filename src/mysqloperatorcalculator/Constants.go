@@ -4,7 +4,7 @@ package mysqloperatorcalculator
 // Constants
 // ***********************************
 const (
-	VERSION = "v1.11.0"
+	VERSION = "v1.20.0"
 
 	OkI                    = 1001
 	ClosetolimitI          = 2001
