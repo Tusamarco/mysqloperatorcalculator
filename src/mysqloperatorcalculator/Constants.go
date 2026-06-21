@@ -86,6 +86,7 @@ const (
 
 	ConnectionWeighPctLimit = 0.50
 	MinConnectionNumber     = 20
+	MaxAutoConnections      = 500000
 
 	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
 	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked

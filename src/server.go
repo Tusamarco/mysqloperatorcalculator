@@ -76,7 +76,7 @@ func handleGetSupported(writer http.ResponseWriter, request *http.Request) error
 		return err
 	}
 
-	writer.Header().Set("Content/Type", "application/json")
+	writer.Header().Set("Content-Type", "application/json")
 	writer.Write(output)
 	return nil
 }
@@ -133,8 +133,11 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	// we need to process the request and get the values
 	err1 := json.Unmarshal(body, &ConfRequest)
 	if err1 != nil {
-		println(err1.Error())
-		exitWithCode(64)
+		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Malformed JSON: "+err1.Error())
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 	if ConfRequest.Dimension.MemoryBytes == 0 && ConfRequest.Dimension.Id != 998 {
 		var errConv error
@@ -224,7 +227,7 @@ func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfReque
 	}
 
 	// Return the information
-	writer.Header().Set("Content/Type", "application/json")
+	writer.Header().Set("Content-Type", "application/json")
 	writer.Write(b.Bytes())
 	return nil
 }

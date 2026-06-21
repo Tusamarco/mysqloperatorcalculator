@@ -44,7 +44,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
 		return fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id), responseMsg, families
 	} else if ConfRequest.Dimension.Id == DimensionOpen && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.MemoryBytes == 0) {
-		return fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory), responseMsg, families
+		return fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %d, Memory %s", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory), responseMsg, families
 	}
 
 	if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
@@ -79,9 +79,18 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	// Auto calculation of the connections
 	if moc.IncomingRequest.Connections == 0 { //|| moc.IncomingRequest.Dimension.Id == DimensionOpen {
 		moc.IncomingRequest.Connections = MinConnectionNumber
-		for message.MType != OverutilizingI {
+		for message.MType != OverutilizingI && moc.IncomingRequest.Connections < MaxAutoConnections {
 			moc.IncomingRequest.Connections += 10
 			calcErr, message, Families = moc.getCalculateInt()
+		}
+		// We check the connections, and if it goes above the limit we stop and return an error message
+		if moc.IncomingRequest.Connections >= MaxAutoConnections {
+			log.Warnf("Auto-connection loop hit cap (%d), dimension may be undersized", MaxAutoConnections)
+			message.MType = ErrorexecI
+			message.MText = fmt.Sprintf(message.GetMessageText(ErrorexecI),
+				fmt.Sprintf("auto-connection discovery reached the cap of %d connections; the requested dimension may be undersized", MaxAutoConnections))
+			message.MName = "Auto-connection cap reached"
+			return calcErr, message, Families
 		}
 
 		moc.IncomingRequest.Connections -= 10
