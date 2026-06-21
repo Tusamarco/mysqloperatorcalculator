@@ -8,11 +8,11 @@ import (
 // makeRequest builds a minimal valid ConfigurationRequest for integration tests.
 func makeRequest(dbtype string, dimID, loadID, connections int) ConfigurationRequest {
 	return ConfigurationRequest{
-		DBType:      dbtype,
-		Connections: connections,
-		Dimension:   Dimension{Id: dimID},
-		LoadType:    LoadType{Id: loadID},
-		Mysqlversion: Version{Major: 8, Minor: 0, Patch: 32},
+		DBType:       dbtype,
+		Connections:  connections,
+		Dimension:    Dimension{Id: dimID},
+		LoadType:     LoadType{Id: loadID},
+		Mysqlversion: Version{Major: 8, Minor: 0, Patch: 46},
 	}
 }
 
@@ -184,7 +184,7 @@ func TestIntegration_OpenDimension_PXC(t *testing.T) {
 			MemoryBytes: 8 * 1024 * 1024 * 1024,
 		},
 		LoadType:     LoadType{Id: LoadTypeMostlyReads},
-		Mysqlversion: Version{Major: 8, Minor: 0, Patch: 32},
+		Mysqlversion: Version{Major: 8, Minor: 0, Patch: 46},
 	}
 	err, msg, families := runCalculate(req)
 	if err != nil {
@@ -229,9 +229,9 @@ func TestIntegration_ProbesAndResourcesPresent(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestIntegration_VersionFilter_OldVersion(t *testing.T) {
-	// MySQL 8.0.30 is below the minimum for some parameters (e.g. min 8.0.32)
+	// 8.0.44 is below MySQLMinSupported (8.0.46) — most parameters get filtered out
 	req := makeRequest(DbTypePXC, 2, LoadTypeMostlyReads, 50)
-	req.Mysqlversion = Version{Major: 8, Minor: 0, Patch: 28}
+	req.Mysqlversion = Version{Major: 8, Minor: 0, Patch: 44}
 	err, _, families := runCalculate(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
