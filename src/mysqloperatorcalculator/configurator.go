@@ -208,21 +208,50 @@ func (c *Configurator) filterByMySQLVersion() map[string]Family {
 	return c.families
 }
 
+// loadValues returns one of four values indexed by current load type [MostlyReads, SomeWrites, EqualReadsWrites, HeavyWrites].
+func (c *Configurator) loadValues(byLoad [4]string) string {
+	switch c.reference.loadID {
+	case LoadTypeMostlyReads:
+		return byLoad[0]
+	case LoadTypeSomeWrites:
+		return byLoad[1]
+	case LoadTypeEqualReadsWrites:
+		return byLoad[2]
+	case LoadTypeHeavyWrites:
+		return byLoad[3]
+	default:
+		return byLoad[1]
+	}
+}
+
+// loadFloat returns one of four floats indexed by current load type [MostlyReads, SomeWrites, EqualReadsWrites, HeavyWrites].
+func (c *Configurator) loadFloat(byLoad [4]float64) float64 {
+	switch c.reference.loadID {
+	case LoadTypeMostlyReads:
+		return byLoad[0]
+	case LoadTypeSomeWrites:
+		return byLoad[1]
+	case LoadTypeEqualReadsWrites:
+		return byLoad[2]
+	case LoadTypeHeavyWrites:
+		return byLoad[3]
+	default:
+		return byLoad[0]
+	}
+}
+
 func (c *Configurator) getGcache() {
 	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
 	if c.reference.gcache > (c.reference.memoryLeftover / 3) {
 		c.reference.gcache = c.reference.memoryLeftover / 3
 	}
 
-	gcacheFootPrintFactor := 0.5
-	switch c.reference.loadID {
-	case 1:
-		gcacheFootPrintFactor = GcacheFootPrintFactorRead
-	case 2:
-		gcacheFootPrintFactor = GcacheFootPrintFactorLightWrite
-	case 3:
-		gcacheFootPrintFactor = GcacheFootPrintFactorReadWrite
-	}
+	gcacheFootPrintFactor := c.loadFloat([4]float64{
+		GcacheFootPrintFactorRead,
+		GcacheFootPrintFactorLightWrite,
+		GcacheFootPrintFactorReadWrite,
+		0.5,
+	})
 
 	c.reference.gcacheFootprint = int64(math.Ceil(float64(c.reference.gcache) * gcacheFootPrintFactor))
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
@@ -254,54 +283,22 @@ func (c *Configurator) getConnectionBuffers() {
 }
 
 func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads:
-		inParameter.Value = "32768"
-	case LoadTypeSomeWrites:
-		inParameter.Value = "131072"
-	case LoadTypeEqualReadsWrites:
-		inParameter.Value = "262144"
-	case LoadTypeHeavyWrites:
-		inParameter.Value = "358400"
-	}
+	inParameter.Value = c.loadValues([4]string{"32768", "131072", "262144", "358400"})
 	return inParameter
 }
 
 func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads:
-		inParameter.Value = "262144"
-	case LoadTypeSomeWrites:
-		inParameter.Value = "524288"
-	case LoadTypeEqualReadsWrites, LoadTypeHeavyWrites: // Combined identical cases
-		inParameter.Value = "1048576"
-	}
+	inParameter.Value = c.loadValues([4]string{"262144", "524288", "1048576", "1048576"})
 	return inParameter
 }
 
 func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads:
-		inParameter.Value = "262144"
-	case LoadTypeSomeWrites:
-		inParameter.Value = "393216"
-	case LoadTypeEqualReadsWrites, LoadTypeHeavyWrites:
-		inParameter.Value = "707788"
-	}
+	inParameter.Value = c.loadValues([4]string{"262144", "393216", "707788", "707788"})
 	return inParameter
 }
 
 func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads:
-		inParameter.Value = "262144"
-	case LoadTypeSomeWrites:
-		inParameter.Value = "524288"
-	case LoadTypeEqualReadsWrites:
-		inParameter.Value = "1572864"
-	case LoadTypeHeavyWrites:
-		inParameter.Value = "2097152"
-	}
+	inParameter.Value = c.loadValues([4]string{"262144", "524288", "1572864", "2097152"})
 	return inParameter
 }
 
@@ -309,15 +306,7 @@ func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
 func (c *Configurator) calculateTmpTableFootprint(inParameter Parameter) {
 	c.reference.tmpTableFootprint, _ = strconv.ParseInt(inParameter.Value, 10, 64)
 
-	multiplier := 0.2
-	switch c.reference.loadID {
-	case LoadTypeSomeWrites:
-		multiplier = 0.1
-	case LoadTypeEqualReadsWrites:
-		multiplier = 0.3
-	case LoadTypeHeavyWrites:
-		multiplier = 0.05
-	}
+	multiplier := c.loadFloat([4]float64{0.2, 0.1, 0.3, 0.05})
 
 	c.reference.tmpTableFootprint = int64(float64(c.reference.tmpTableFootprint) * multiplier)
 }
@@ -400,14 +389,7 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Paramete
 }
 
 func (c *Configurator) getGcacheLoad() float64 {
-	switch c.reference.loadID {
-	case LoadTypeSomeWrites:
-		return 1.15
-	case LoadTypeEqualReadsWrites:
-		return 1.2
-	default:
-		return 1
-	}
+	return c.loadFloat([4]float64{1.0, 1.15, 1.2, 1.0})
 }
 
 func (c *Configurator) getInnodbBufferPool(final bool) {
@@ -459,7 +441,7 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 
 	if !final {
 		bufferPool := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
-		bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * InnoDBPctValuePXC))
+		bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
 
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
 		c.reference.innoDBbpSize = bufferPool
@@ -478,6 +460,16 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 			// the memory left over at this point is expected to be negative
 			bufferPool = c.reference.innoDBbpSize - int64(math.Abs(float64(c.reference.memoryLeftover)))
 			c.reference.memoryLeftover = 0
+
+			// Enforce minimum buffer pool floor to prevent going dangerously low
+			minPct := MinLimitGR
+			if c.request.DBType == "pxc" {
+				minPct = MinLimitPXC
+			}
+			minBufferPool := int64(c.reference.memoryMySQL * minPct)
+			if bufferPool < minBufferPool {
+				bufferPool = minBufferPool
+			}
 		}
 
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
@@ -571,22 +563,14 @@ func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
 }
 
 func (c *Configurator) paramInnoDBIOCapacityMax(parameter Parameter) Parameter {
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads:
-		parameter.Value = "28000"
-	case LoadTypeSomeWrites:
-		parameter.Value = "24000"
-	case LoadTypeEqualReadsWrites:
-		parameter.Value = "20000"
-	default:
-		parameter.Value = "20000"
-	}
+	parameter.Value = c.loadValues([4]string{"28000", "24000", "20000", "20000"})
 	return parameter
 }
 
 func (c *Configurator) getServerParameters() {
 	group := c.families["mysql"].Groups["configuration_server"]
 	group.Parameters["max_connections"] = c.paramServerMaxConnections(group.Parameters["max_connections"])
+	// TODO re-enable once we have better TP handling in PS
 	//group.Parameters["thread_pool_size"] = c.paramServerThreadPool(group.Parameters["thread_pool_size"])
 	//group.Parameters["table_definition_cache"] = c.paramServerTableDefinitionCache(group.Parameters["table_definition_cache"])
 	//group.Parameters["table_open_cache"] = c.paramServerTableOpenCache(group.Parameters["table_open_cache"])

@@ -33,7 +33,7 @@ func (help *HelpText) PrintLicense() {
 }
 
 func (help *HelpText) GetHelpText() string {
-	helpText := `PXC Calculator for Percona Operator
+	helpText := `MySQL Calculator for Percona Operator (PXC and PS)
 
 
 To get supported scenarios:

@@ -71,7 +71,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 			moc.IncomingRequest.Dimension = dimension
 			calcErr, message, Families = moc.getCalculateInt()
 		}
-		message.MText += "\n!!!! Resources calculated to match connections request\n\n"
+		message.MText += "\n!!!! Minimal Resources needed to serve.\nCalculated to match connections request\n\n"
 		message.MName = message.GetMessageText(ResourcesRecalculated)
 		message.MType = ResourcesRecalculated
 	}
@@ -112,7 +112,8 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 
 	// Handle pre-defined configs
 	if ConfRequest.Dimension.Id != 999 && ConfRequest.Dimension.Id != 998 && ConfRequest.Dimension.Name != "scaled" {
-		ConfRequest = getConfForConfRequest(ConfRequest, conf)
+		//ConfRequest = getConfForConfRequest(ConfRequest, conf)
+		moc.GetConfForConfRequest()
 	}
 
 	families := family.Init(ConfRequest.DBType)
@@ -136,27 +137,27 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 	return nil, responseMsg, families
 }
 
-func getConfForConfRequest(request ConfigurationRequest, conf Configuration) ConfigurationRequest {
-	if request.Dimension.Id != DimensionOpen {
-		for i := range conf.Dimension {
-			if request.Dimension.Id == conf.Dimension[i].Id {
-				request.Dimension = conf.Dimension[i]
-				break
-			}
-		}
-	} else {
-		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
-	}
-
-	for i := range conf.LoadType {
-		if request.LoadType.Id == conf.LoadType[i].Id {
-			request.LoadType = conf.LoadType[i]
-			break
-		}
-	}
-
-	return request
-}
+//func getConfForConfRequest(request ConfigurationRequest, conf Configuration) ConfigurationRequest {
+//	if request.Dimension.Id != DimensionOpen {
+//		for i := range conf.Dimension {
+//			if request.Dimension.Id == conf.Dimension[i].Id {
+//				request.Dimension = conf.Dimension[i]
+//				break
+//			}
+//		}
+//	} else {
+//		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
+//	}
+//
+//	for i := range conf.LoadType {
+//		if request.LoadType.Id == conf.LoadType[i].Id {
+//			request.LoadType = conf.LoadType[i]
+//			break
+//		}
+//	}
+//
+//	return request
+//}
 
 func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family) error {
 	var b bytes.Buffer
@@ -262,7 +263,6 @@ func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
 	}
 
 	for i := range moc.Conf.LoadType {
-		// BUG FIX: Originally compared `Dimension.Id` against `LoadType[i].Id`.
 		if moc.IncomingRequest.LoadType.Id == moc.Conf.LoadType[i].Id {
 			moc.IncomingRequest.LoadType = moc.Conf.LoadType[i]
 			break
