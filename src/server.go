@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 
 	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	log "github.com/sirupsen/logrus"
@@ -75,7 +76,7 @@ func handleGetSupported(writer http.ResponseWriter, request *http.Request) error
 		return err
 	}
 
-	writer.Header().Set("Content/Type", "application/json")
+	writer.Header().Set("Content-Type", "application/json")
 	writer.Write(output)
 	return nil
 }
@@ -106,25 +107,37 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 	var ConfRequest MO.ConfigurationRequest
 
 	//if we do not have a real request we return a message with the info
-	len := request.ContentLength
-	if len <= 0 {
+	if request.ContentLength == 0 {
 		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Empty request")
 		if err != nil {
 			return err
 		}
 		return nil
 	}
-	body := make([]byte, len)
-	request.Body.Read(body)
-	//var buffer bytes.Buffer
-	//buffer.Write(body)
-	//println(buffer.String())
+	body, readErr := io.ReadAll(request.Body)
+	if readErr != nil {
+		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Failed to read request body: "+readErr.Error())
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if len(body) == 0 {
+		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Empty request body")
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 
 	// we need to process the request and get the values
 	err1 := json.Unmarshal(body, &ConfRequest)
 	if err1 != nil {
-		println(err1.Error())
-		exitWithCode(64)
+		err := returnErrorMessage(writer, request, ConfRequest, responseMsg, families, "Malformed JSON: "+err1.Error())
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 	if ConfRequest.Dimension.MemoryBytes == 0 && ConfRequest.Dimension.Id != 998 {
 		var errConv error
@@ -184,8 +197,8 @@ func handleGetCalculate(writer http.ResponseWriter, request *http.Request) error
 }
 
 func exitWithCode(errorCode int) {
-	log.Debug("Exiting execution with code ", errorCode)
-	os.Exit(errorCode)
+	log.Debug("Error execution with code ", errorCode)
+	//os.Exit(errorCode)
 }
 
 func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfRequest MO.ConfigurationRequest, message MO.ResponseMessage, families map[string]MO.Family, errorMessage string) error {
@@ -214,7 +227,7 @@ func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfReque
 	}
 
 	// Return the information
-	writer.Header().Set("Content/Type", "application/json")
+	writer.Header().Set("Content-Type", "application/json")
 	writer.Write(b.Bytes())
 	return nil
 }

@@ -10,103 +10,19 @@ import (
 	"code.cloudfoundry.org/bytefmt"
 )
 
-// ***********************************
-// Constants
-// ***********************************
-const (
-	VERSION = "v1.11.0"
+//*********************************
+// Version definitions
+//********************************
 
-	OkI                    = 1001
-	ClosetolimitI          = 2001
-	OverutilizingI         = 3001
-	ErrorexecI             = 5001
-	ConnectionRecalculated = 6001
-	ResourcesRecalculated  = 7001
+var MySQLMinSupported = Version{8, 0, 46}
+var MySQLMaxSupported = Version{11, 1, 1}
 
-	OkT                       = "Execution was successful and resources match the possible requests"
-	ClosetolimitT             = "Execution was successful however resources are close to saturation based on the load requested"
-	OverutilizingT            = "Resources not enough to cover the requested load "
-	ErrorexecT                = "There is an error while processing. See details: %s"
-	ConnectionRecalculatedTxt = "The number of connection has been recalculated to match the available resources"
-	ResourcesRecalculatedTxt  = "All resources have been recalculated to match the requested connections"
+// Boundary points where behaviour changed
+var V8_0_46 = Version{8, 0, 46}
+var V8_4_1 = Version{8, 4, 1}
+var V11_1_1 = Version{11, 1, 1}
 
-	LoadTypeMostlyReads      = 1
-	LoadTypeSomeWrites       = 2
-	LoadTypeEqualReadsWrites = 3
-	LoadTypeHeavyWrites      = 4
-
-	DimensionOpen       = 999
-	ConnectionDimension = 998
-
-	FamilyTypeMysql   = "mysql"
-	FamilyTypeProxy   = "proxy"
-	FamilyTypeMonitor = "monitor"
-
-	GroupNameMySQLd    = "mysqld"
-	GroupNameProbes    = "probes"
-	GroupNameResources = "resources"
-	GroupNameHAProxy   = "haproxyConfig"
-
-	DbTypePXC              = "pxc"
-	DbTypeGroupReplication = "group_replication"
-
-	ResultOutputFormatJson  = "json"
-	ResultOutputFormatHuman = "human"
-
-	InnoDBPctValuePXC = 0.80
-	InnoDBPctValueGR  = 0.70
-
-	GroupRepGCSCacheMemStructureCost = 52428800
-
-	MinLimitPXC            = 0.50
-	MinLimitGR             = 0.40
-	MemoryFreeMinimumLimit = 0.02
-
-	/* Minlimit is the % of memory assigned to Innodb buffer pool compared to the total memory assigned to mysql
-	We have different min limit per type of replication (galera and Group replication) because the different impact of the internal cache.
-	In GR the certification cache is suffering of an issue. In short the certification cache is clean/flushed on commit, but if the operation is a long one like insert into A from select * from b ;
-	and we have large dataset, this may cause the cache buffer to be very large and causing issues like swap or OOM kill.
-	While we cannot prevent this to happen, we need to consider the possible impact of it.
-	Also other caches used by GR and more frequently cleanup are causing higher memory consumption than galera.
-	as such we need to allocate less memory to innodb and more to buffers.
-	By consequence the % of innodb memory for galera is higher than GR
-	*/
-	// MemoryFreeMinimumLimit This is the amount of memory in % that we must keep free no matter what to give some space to the server
-
-	// Weight to use when using PXC for Gcache in mem footprint
-	GcacheFootPrintFactorRead       = 0.5
-	GcacheFootPrintFactorLightWrite = 0.6
-	GcacheFootPrintFactorReadWrite  = 0.8
-
-	// Weights to use to tune the GCS calculation against connections
-	GCSConnWeight = 10 //each connection costs 10 millicycles
-	// TODO Deprecated
-	//GCSWeightRead           = 0.40
-	//GCSWeightReadLightWrite = 0.60
-	//GCSWeightReadWrite      = 1.20
-	//GCSWeightReadHeavyWrite = 1
-
-	CPUIncrement    = 200
-	MemoryIncrement = 500
-
-	CpuConncetionMillFactorRead           = 0.8
-	CpuConncetionMillFactorReadWriteLight = 1.2
-	CpuConncetionMillFactorReadWriteEqual = 1.6
-	CpuConncetionMillFactorReadWriteHeavy = 2
-
-	ConnectionWeighPctLimit = 0.50
-	MinConnectionNumber     = 20
-
-	/*Connection / CPU adjustment factor this is the factor by which we divide the available CPU mill reporting th emaximum number of connections available
-	if we assign 2000 CPU and ask for 100 connection the formula will be CPUmill/CpuConncetionMillFactor < Connection asked
-	if the number of CPUmill/CpuConncetionMillFactor > Connection asked we are overloading the platform
-	We hace 3 different load factors:
-	- mainly read
-	- read/write 80/20
-	- read/write 50/50
-	*/
-	// Global
-)
+//********************************
 
 //*********************************
 // Structure definitions
@@ -270,74 +186,74 @@ func (conf *Configuration) Init() {
 func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	// Group declarations shortened for brevity, functionally identical
 	replicaGroup := map[string]Parameter{
-		"replica_compressed_protocol":   {"replica_compressed_protocol", "configuration", "replication", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
-		"replica_exec_mode":             {"replica_exec_mode", "configuration", "replication", "STRICT", "STRICT", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
-		"replica_parallel_type":         {"replica_parallel_type", "configuration", "replication", "LOGICAL_CLOCK", "LOGICAL_CLOCK", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
-		"replica_parallel_workers":      {"replica_parallel_workers", "configuration", "replication", "4", "4", 0, 1024, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
-		"replica_preserve_commit_order": {"replica_preserve_commit_order", "configuration", "replication", "ON", "ON", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{9, 7, 0}}},
+		"replica_compressed_protocol":   {"replica_compressed_protocol", "configuration", "replication", "1", "1", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
+		"replica_exec_mode":             {"replica_exec_mode", "configuration", "replication", "STRICT", "STRICT", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"replica_parallel_type":         {"replica_parallel_type", "configuration", "replication", "LOGICAL_CLOCK", "LOGICAL_CLOCK", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"replica_parallel_workers":      {"replica_parallel_workers", "configuration", "replication", "4", "4", 0, 1024, MySQLVersions{V8_0_46, V11_1_1}},
+		"replica_preserve_commit_order": {"replica_preserve_commit_order", "configuration", "replication", "ON", "ON", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
 	}
 	connectionGroup := map[string]Parameter{
-		//"binlog_cache_size":      {"binlog_cache_size", "configuration", "connection", "32768", "32768", 32768, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"binlog_stmt_cache_size": {"binlog_stmt_cache_size", "configuration", "connection", "32768", "32768", 32768, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"join_buffer_size":     {"join_buffer_size", "configuration", "connection", "262144", "262144", 262144, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"read_rnd_buffer_size": {"read_rnd_buffer_size", "configuration", "connection", "262144", "262144", 262144, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"sort_buffer_size":     {"sort_buffer_size", "configuration", "connection", "524288", "524288", 524288, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"max_heap_table_size":  {"max_heap_table_size", "configuration", "connection", "16777216", "16777216", 16777216, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"tmp_table_size":       {"tmp_table_size", "configuration", "connection", "16777216", "16777216", 16777216, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		//"binlog_cache_size":      {"binlog_cache_size", "configuration", "connection", "32768", "32768", 32768, 0, MySQLVersions{V8_0_46, Version{10, 1, 0}}},
+		//"binlog_stmt_cache_size": {"binlog_stmt_cache_size", "configuration", "connection", "32768", "32768", 32768, 0, MySQLVersions{V8_0_46, Version{10, 1, 0}}},
+		"join_buffer_size":     {"join_buffer_size", "configuration", "connection", "262144", "262144", 262144, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"read_rnd_buffer_size": {"read_rnd_buffer_size", "configuration", "connection", "262144", "262144", 262144, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"sort_buffer_size":     {"sort_buffer_size", "configuration", "connection", "524288", "524288", 524288, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"max_heap_table_size":  {"max_heap_table_size", "configuration", "connection", "16777216", "16777216", 16777216, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"tmp_table_size":       {"tmp_table_size", "configuration", "connection", "16777216", "16777216", 16777216, 0, MySQLVersions{V8_0_46, V11_1_1}},
 	}
 	serverGroup := map[string]Parameter{
-		"max_connections": {"max_connections", "configuration", "server", "50", "2", 2, 65536, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"table_definition_cache":            {"table_definition_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"table_open_cache":                  {"table_open_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"thread_stack":                      {"thread_stack", "configuration", "server", "1048576", "1048576", 131072, 393216, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"table_open_cache_instances":        {"table_open_cache_instances", "configuration", "server", "4", "16", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"tablespace_definition_cache":       {"tablespace_definition_cache", "configuration", "server", "512", "256", 256, 524288, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"sync_binlog": {"sync_binlog", "configuration", "server", "1", "1", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"sql_mode":    {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,TRADITIONAL,STRICT_ALL_TABLES'", "0", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"binlog_expire_logs_seconds":        {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"binlog_format":                     {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"thread_cache_size": {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"global-connection-memory-limit":    {"global_connection_memory_limit", "configuration", "server", "18446744073709551615", "16777216", 4, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"global-connection-memory-tracking": {"global_connection_memory_tracking", "configuration", "server", "false", "false", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"max_connections": {"max_connections", "configuration", "server", "50", "2", 2, 65536, MySQLVersions{V8_0_46, V11_1_1}},
+		//"table_definition_cache":            {"table_definition_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{V8_0_46, V11_1_1}},
+		//"table_open_cache":                  {"table_open_cache", "configuration", "server", "4096", "4096", 400, 524288, MySQLVersions{V8_0_46, V11_1_1}},
+		//"thread_stack":                      {"thread_stack", "configuration", "server", "1048576", "1048576", 131072, 393216, MySQLVersions{V8_0_46, V11_1_1}},
+		//"table_open_cache_instances":        {"table_open_cache_instances", "configuration", "server", "4", "16", 1, 64, MySQLVersions{V8_0_46, V11_1_1}},
+		//"tablespace_definition_cache":       {"tablespace_definition_cache", "configuration", "server", "512", "256", 256, 524288, MySQLVersions{V8_0_46, V11_1_1}},
+		"sync_binlog": {"sync_binlog", "configuration", "server", "1", "1", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
+		//"sql_mode":    {"sql_mode", "configuration", "server", "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,TRADITIONAL,STRICT_ALL_TABLES'", "0", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
+		//"binlog_expire_logs_seconds":        {"binlog_expire_logs_seconds", "configuration", "server", "604800", "0", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		//"binlog_format":                     {"binlog_format", "configuration", "server", "ROW", "0", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"thread_cache_size": {"thread_cache_size", "configuration", "server", "8", "8", 4, 16384, MySQLVersions{V8_0_46, V11_1_1}},
+		//"global-connection-memory-limit":    {"global_connection_memory_limit", "configuration", "server", "18446744073709551615", "16777216", 4, 18446744073709551615, MySQLVersions{V8_0_46, V11_1_1}},
+		//"global-connection-memory-tracking": {"global_connection_memory_tracking", "configuration", "server", "false", "false", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
 	}
 	innodbGroup := map[string]Parameter{
-		"innodb_adaptive_hash_index": {"innodb_adaptive_hash_index", "configuration", "innodb", "0", "0", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_buffer_pool_size":    {"innodb_buffer_pool_size", "configuration", "innodb", "1073741824", "134217728", 5242880, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"innodb_ddl_threads":             {"innodb_ddl_threads", "configuration", "innodb", "2", "4", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_buffer_pool_instances":   {"innodb_buffer_pool_instances", "configuration", "innodb", "1", "8", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_flush_method":            {"innodb_flush_method", "configuration", "innodb", "O_DIRECT", "O_DIRECT", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_flush_log_at_trx_commit": {"innodb_flush_log_at_trx_commit", "configuration", "innodb", "2", "1", 0, 2, MySQLVersions{Version{8, 0, 30}, Version{10, 2, 0}}},
-		"innodb_log_file_size":           {"innodb_log_file_size", "configuration", "innodb", "119537664", "50331648", 4194304, 0, MySQLVersions{Version{8, 0, 27}, Version{8, 0, 30}}},
-		"innodb_log_files_in_group":      {"innodb_log_files_in_group", "configuration", "innodb", "2", "2", 2, 100, MySQLVersions{Version{8, 0, 27}, Version{8, 0, 30}}},
-		"innodb_redo_log_capacity":       {"innodb_redo_log_capacity", "configuration", "innodb", "119537664", "104857600", 8388608, 137438953472, MySQLVersions{Version{8, 0, 31}, Version{10, 1, 0}}},
-		//"innodb_page_cleaners":           {"innodb_page_cleaners", "configuration", "innodb", "1", "4", 1, 64, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_purge_threads":          {"innodb_purge_threads", "configuration", "innodb", "1", "4", 1, 32, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_io_capacity_max":        {"innodb_io_capacity_max", "configuration", "innodb", "20000", "20000", 100, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 8, 0}}},
-		"innodb_numa_interleave":        {"innodb_numa_interleave", "configuration", "innodb", "0", "1", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 8, 0}}},
-		"innodb_buffer_pool_chunk_size": {"innodb_buffer_pool_chunk_size", "configuration", "innodb", "2097152", "134217728", 1048576, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_parallel_read_threads":  {"innodb_parallel_read_threads", "configuration", "innodb", "1", "4", 1, 256, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"innodb_monitor_enable":         {"innodb_monitor_enable", "configuration", "innodb", "ALL", "ALL", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"innodb_adaptive_hash_index": {"innodb_adaptive_hash_index", "configuration", "innodb", "0", "0", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_buffer_pool_size":    {"innodb_buffer_pool_size", "configuration", "innodb", "1073741824", "134217728", 5242880, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		//"innodb_ddl_threads":             {"innodb_ddl_threads", "configuration", "innodb", "2", "4", 1, 64, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_buffer_pool_instances":   {"innodb_buffer_pool_instances", "configuration", "innodb", "1", "8", 1, 64, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_flush_method":            {"innodb_flush_method", "configuration", "innodb", "O_DIRECT", "O_DIRECT", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_flush_log_at_trx_commit": {"innodb_flush_log_at_trx_commit", "configuration", "innodb", "2", "1", 0, 2, MySQLVersions{V8_0_46, Version{10, 2, 0}}},
+		"innodb_log_file_size":           {"innodb_log_file_size", "configuration", "innodb", "119537664", "50331648", 4194304, 0, MySQLVersions{Version{8, 0, 27}, V8_0_46}},
+		"innodb_log_files_in_group":      {"innodb_log_files_in_group", "configuration", "innodb", "2", "2", 2, 100, MySQLVersions{Version{8, 0, 27}, V8_0_46}},
+		"innodb_redo_log_capacity":       {"innodb_redo_log_capacity", "configuration", "innodb", "119537664", "104857600", 8388608, 137438953472, MySQLVersions{Version{8, 0, 31}, V11_1_1}},
+		//"innodb_page_cleaners":           {"innodb_page_cleaners", "configuration", "innodb", "1", "4", 1, 64, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_purge_threads":          {"innodb_purge_threads", "configuration", "innodb", "1", "4", 1, 32, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_io_capacity_max":        {"innodb_io_capacity_max", "configuration", "innodb", "20000", "20000", 100, 0, MySQLVersions{V8_0_46, Version{8, 8, 0}}},
+		"innodb_numa_interleave":        {"innodb_numa_interleave", "configuration", "innodb", "0", "1", 0, 0, MySQLVersions{V8_0_46, Version{8, 8, 0}}},
+		"innodb_buffer_pool_chunk_size": {"innodb_buffer_pool_chunk_size", "configuration", "innodb", "2097152", "134217728", 1048576, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_parallel_read_threads":  {"innodb_parallel_read_threads", "configuration", "innodb", "1", "4", 1, 256, MySQLVersions{V8_0_46, V11_1_1}},
+		"innodb_monitor_enable":         {"innodb_monitor_enable", "configuration", "innodb", "ALL", "ALL", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
 	}
 	wsrepGroup := map[string]Parameter{
-		"wsrep_sync_wait":         {"wsrep_sync_wait", "configuration", "galera", "0", "0", 0, 8, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"wsrep_slave_threads":     {"wsrep_slave_threads", "configuration", "galera", "2", "1", 1, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"wsrep_trx_fragment_size": {"wsrep_trx_fragment_size", "configuration", "galera", "1048576", "0", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "bytes", "bytes", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		"wsrep_sync_wait":         {"wsrep_sync_wait", "configuration", "galera", "0", "0", 0, 8, MySQLVersions{V8_0_46, V11_1_1}},
+		"wsrep_slave_threads":     {"wsrep_slave_threads", "configuration", "galera", "2", "1", 1, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"wsrep_trx_fragment_size": {"wsrep_trx_fragment_size", "configuration", "galera", "1048576", "0", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"wsrep_trx_fragment_unit": {"wsrep_trx_fragment_unit", "configuration", "galera", "bytes", "bytes", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"wsrep-provider-options":  {"wsrep-provider-options", "configuration", "galera", "<placeholder>", "", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
 	}
 	groupReplicationGroup := map[string]Parameter{
-		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_flow_control_period":            {"loose_group_replication_flow_control_period", "configuration", "groupReplication", "1", "1", 1, 5, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "1073741824", "1073741824", 134217728, 18446744073709551615, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "5097152", "10485760", 0, 1073741824, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "15", "5", 0, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"loose_group_replication_poll_spin_loops": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_group_replication_paxos_single_leader":  {"loose_group_replication_paxos_single_leader", "configuration", "groupReplication", "ON", "OFF", 0, 1, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
-		"loose_binlog_transaction_dependency_tracking": {"loose_binlog_transaction_dependency_tracking", "configuration", "groupReplication", "WRITESET", "COMMIT_ORDER", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{8, 3, 0}}},
+		"loose_group_replication_autorejoin_tries":               {"loose_group_replication_autorejoin_tries", "configuration", "groupReplication", "2", "3", 0, 8, MySQLVersions{V8_0_46, V11_1_1}},
+		"loose_group_replication_flow_control_period":            {"loose_group_replication_flow_control_period", "configuration", "groupReplication", "1", "1", 1, 5, MySQLVersions{V8_0_46, V11_1_1}},
+		"loose_group_replication_message_cache_size":             {"loose_group_replication_message_cache_size", "configuration", "groupReplication", "1073741824", "1073741824", 134217728, 18446744073709551615, MySQLVersions{V8_0_46, V11_1_1}},
+		"loose_group_replication_communication_max_message_size": {"loose_group_replication_communication_max_message_size", "configuration", "groupReplication", "5097152", "10485760", 0, 1073741824, MySQLVersions{V8_0_46, V11_1_1}},
+		"loose_group_replication_member_expel_timeout":           {"loose_group_replication_member_expel_timeout", "configuration", "groupReplication", "15", "5", 0, 3600, MySQLVersions{V8_0_46, V11_1_1}},
+		//"loose_group_replication_unreachable_majority_timeout":   {"loose_group_replication_unreachable_majority_timeout", "configuration", "groupReplication", "3600", "0", 300, 3600, MySQLVersions{V8_0_46, V11_1_1}},
+		//"loose_group_replication_poll_spin_loops": {"loose_group_replication_poll_spin_loops", "configuration", "groupReplication", "0", "0", 10000, 40000, MySQLVersions{V8_0_46, V11_1_1}},
+		//"loose_group_replication_compression_threshold":          {"loose_group_replication_compression_threshold", "configuration", "groupReplication", "1000000", "1000000", 129024, 1000000, MySQLVersions{V8_0_46, V11_1_1}},
+		"loose_group_replication_paxos_single_leader":  {"loose_group_replication_paxos_single_leader", "configuration", "groupReplication", "ON", "OFF", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
+		"loose_binlog_transaction_dependency_tracking": {"loose_binlog_transaction_dependency_tracking", "configuration", "groupReplication", "WRITESET", "COMMIT_ORDER", 0, 0, MySQLVersions{V8_0_46, Version{8, 3, 0}}},
 		//"loose_group_replication_view_change_uuid":               {"loose_group_replication_view_change_uuid", "configuration", "groupReplication", "AUTOMATIC", "AUTOMATIC", 0, 0},
-		//"loose_group_replication_exit_state_action":              {"loose_group_replication_exit_state_action", "configuration", "groupReplication", "READ_ONLY", "READ_ONLY", 0, 0, MySQLVersions{Version{8, 0, 30}, Version{10, 1, 0}}},
+		//"loose_group_replication_exit_state_action":              {"loose_group_replication_exit_state_action", "configuration", "groupReplication", "READ_ONLY", "READ_ONLY", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
 
 	}
 
@@ -581,8 +497,8 @@ func InBetweenFloat(val, min, max float64) bool {
 }
 
 func (conf *Configuration) getMySQLVersion() {
-	conf.Mysqlversions.Max = Version{10, 10, 0}
-	conf.Mysqlversions.Min = Version{8, 0, 32}
+	conf.Mysqlversions.Max = MySQLMaxSupported
+	conf.Mysqlversions.Min = MySQLMinSupported
 }
 
 // =====================================================

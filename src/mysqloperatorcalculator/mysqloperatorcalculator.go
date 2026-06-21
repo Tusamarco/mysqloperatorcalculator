@@ -44,7 +44,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	if ConfRequest.Dimension.Id == 0 || ConfRequest.LoadType.Id == 0 {
 		return fmt.Errorf("Possible Malformed request, Dimension ID: %d; LoadType ID: %d", ConfRequest.Dimension.Id, ConfRequest.LoadType.Id), responseMsg, families
 	} else if ConfRequest.Dimension.Id == DimensionOpen && (ConfRequest.Dimension.Cpu == 0 || ConfRequest.Dimension.MemoryBytes == 0) {
-		return fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %g, Memory %g", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory), responseMsg, families
+		return fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %d, Memory %s", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory), responseMsg, families
 	}
 
 	if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
@@ -71,7 +71,7 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 			moc.IncomingRequest.Dimension = dimension
 			calcErr, message, Families = moc.getCalculateInt()
 		}
-		message.MText += "\n!!!! Resources calculated to match connections request\n\n"
+		message.MText += "\n!!!! Minimal Resources needed to serve.\nCalculated to match connections request\n\n"
 		message.MName = message.GetMessageText(ResourcesRecalculated)
 		message.MType = ResourcesRecalculated
 	}
@@ -79,9 +79,18 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 	// Auto calculation of the connections
 	if moc.IncomingRequest.Connections == 0 { //|| moc.IncomingRequest.Dimension.Id == DimensionOpen {
 		moc.IncomingRequest.Connections = MinConnectionNumber
-		for message.MType != OverutilizingI {
+		for message.MType != OverutilizingI && moc.IncomingRequest.Connections < MaxAutoConnections {
 			moc.IncomingRequest.Connections += 10
 			calcErr, message, Families = moc.getCalculateInt()
+		}
+		// We check the connections, and if it goes above the limit we stop and return an error message
+		if moc.IncomingRequest.Connections >= MaxAutoConnections {
+			log.Warnf("Auto-connection loop hit cap (%d), dimension may be undersized", MaxAutoConnections)
+			message.MType = ErrorexecI
+			message.MText = fmt.Sprintf(message.GetMessageText(ErrorexecI),
+				fmt.Sprintf("auto-connection discovery reached the cap of %d connections; the requested dimension may be undersized", MaxAutoConnections))
+			message.MName = "Auto-connection cap reached"
+			return calcErr, message, Families
 		}
 
 		moc.IncomingRequest.Connections -= 10
@@ -112,7 +121,8 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 
 	// Handle pre-defined configs
 	if ConfRequest.Dimension.Id != 999 && ConfRequest.Dimension.Id != 998 && ConfRequest.Dimension.Name != "scaled" {
-		ConfRequest = getConfForConfRequest(ConfRequest, conf)
+		//ConfRequest = getConfForConfRequest(ConfRequest, conf)
+		moc.GetConfForConfRequest()
 	}
 
 	families := family.Init(ConfRequest.DBType)
@@ -136,27 +146,27 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 	return nil, responseMsg, families
 }
 
-func getConfForConfRequest(request ConfigurationRequest, conf Configuration) ConfigurationRequest {
-	if request.Dimension.Id != DimensionOpen {
-		for i := range conf.Dimension {
-			if request.Dimension.Id == conf.Dimension[i].Id {
-				request.Dimension = conf.Dimension[i]
-				break
-			}
-		}
-	} else {
-		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
-	}
-
-	for i := range conf.LoadType {
-		if request.LoadType.Id == conf.LoadType[i].Id {
-			request.LoadType = conf.LoadType[i]
-			break
-		}
-	}
-
-	return request
-}
+//func getConfForConfRequest(request ConfigurationRequest, conf Configuration) ConfigurationRequest {
+//	if request.Dimension.Id != DimensionOpen {
+//		for i := range conf.Dimension {
+//			if request.Dimension.Id == conf.Dimension[i].Id {
+//				request.Dimension = conf.Dimension[i]
+//				break
+//			}
+//		}
+//	} else {
+//		request.Dimension = conf.CalculateOpenDimension(request.Dimension)
+//	}
+//
+//	for i := range conf.LoadType {
+//		if request.LoadType.Id == conf.LoadType[i].Id {
+//			request.LoadType = conf.LoadType[i]
+//			break
+//		}
+//	}
+//
+//	return request
+//}
 
 func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family) error {
 	var b bytes.Buffer
@@ -262,7 +272,6 @@ func (moc *MysqlOperatorCalculator) GetConfForConfRequest() {
 	}
 
 	for i := range moc.Conf.LoadType {
-		// BUG FIX: Originally compared `Dimension.Id` against `LoadType[i].Id`.
 		if moc.IncomingRequest.LoadType.Id == moc.Conf.LoadType[i].Id {
 			moc.IncomingRequest.LoadType = moc.Conf.LoadType[i]
 			break

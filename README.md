@@ -81,12 +81,12 @@ Three families are always present: `monitor`, `mysql`, and `proxy`. Each family 
 "configuration_connection": {
   "name": "connections",
   "parameters": {
-    "binlog_cache_size": { "name": "binlog_cache_size", "value": "131072", "default": "32768", "min": 4096, "max": 16777216 },
-    "join_buffer_size": { "name": "join_buffer_size", "value": "524288", "default": "262144", "min": 128, "max": 4294967295 }
+    "binlog_cache_size": { "name": "binlog_cache_size", "value": "131072" },
+    "join_buffer_size": { "name": "join_buffer_size", "value": "524288" }
   }
 }
 ```
-*Note: The `value` field is the calculated number you should use in your deployments. `default`, `min`, and `max` are provided for bounds checking.*
+*Note: The `value` field is the calculated number you should use in your deployments.*
 
 > **⚠️ Critical Warning on Probes and Limits:**
 > The `livenessProbe`, `readinessProbe`, and `resources` (CPU/Memory limits) groups are **not optional**. Ignoring the generated resource limits or probe timings will almost certainly cause unnecessary pod restarts or OOM kills under load.
@@ -571,7 +571,7 @@ The JSON response is divided into three main blocks: `message` (diagnostic statu
 
 ### 2. Human-Readable Output (`"output": "human"`)
 
-The human-readable format strips away the structural metadata and boundary limits (`min`, `max`, `default`), outputting flat, INI-style blocks. This is particularly useful for quickly pasting into a `my.cnf` file or reviewing the raw numbers.
+The human-readable format strips away the structural metadata, outputting flat, INI-style blocks. This is particularly useful for quickly pasting into a `my.cnf` file or reviewing the raw numbers.
 
 ```ini
 --- MESSAGE ---
