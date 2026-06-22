@@ -749,13 +749,21 @@ memoryLeftover        = memoryMySQL − connBuffersMemTot
 
 ### Phase 2 — Redo Log Sizing
 
-The redo log is sized as a fraction of the ideal buffer pool (`memoryMySQL × 0.80`), scaled by `loadFactor`:
+The redo log is sized as a fraction of the ideal buffer pool (`memoryMySQL × 0.80` for PXC, `× 0.70` for GR), using an index that combines a load-type base with a load-factor component:
 
-| Load type          | Formula |
-|:-------------------|:---|
-| `MostlyReads`      | `idealBP × (0.20 + 0.20 × loadFactor)` |
-| `EqualReadsWrites` | `idealBP × (0.30 + 0.30 × loadFactor)` |
-| `HeavyWrites`      | `idealBP × (0.40 + 0.40 × loadFactor)` |
+```
+redologIndex        = baseIndex + (0.5 × loadFactor),  capped at 1.0
+redologTotDimension = idealBP × redologIndex
+```
+
+| Load type          | Base index | Cap reached when `loadFactor` > |
+|:-------------------|:----------:|:---:|
+| `MostlyReads`      | 0.6        | 0.8 |
+| `SomeWrites`       | 0.7        | 0.6 |
+| `EqualReadsWrites` | 0.8        | 0.4 |
+| `HeavyWrites`      | 0.9        | 0.2 |
+
+Higher base values for write-intensive loads ensure the redo log is always large enough to absorb burst writes. The 1.0 cap prevents `innodb_redo_log_capacity` from exceeding `idealBP`. On a busy heavy-write node (`loadFactor > 0.2`) the redo log is always set to `idealBP`.
 
 The result is written to both `innodb_redo_log_capacity` (MySQL 8.0.31+) and the legacy pair `innodb_log_file_size` / `innodb_log_files_in_group`.
 

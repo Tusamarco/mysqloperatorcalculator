@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 
 	"github.com/hashicorp/go-version"
@@ -11,24 +12,24 @@ import (
 )
 
 type Configurator struct {
-	request            ConfigurationRequest
-	families           map[string]Family
-	providerParams     map[string]ProviderParam
-	reference          *references
-	connectionResearch bool
+	request        ConfigurationRequest
+	families       map[string]Family
+	providerParams map[string]ProviderParam
+	reference      *references
+	//connectionResearch bool
 }
 
 // references structure keeps information needed while calculating parameters
 type references struct {
-	memory             float64 // total memory available
-	cpus               int     // total cpus
-	gcache             int64   // assigned gcache dimension
-	gcacheFootprint    int64   // expected file footprint in memory
-	gcacheLoad         float64 // gcache load adj factor base on type of load
-	memoryLeftover     int64   // memory free after all calculation
-	innodbRedoLogDim   int64   // total redolog dimension
-	innoDBbpSize       int64   // Calculated BP to apply
-	loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
+	memory           float64 // total memory available
+	cpus             int     // total cpus
+	gcache           int64   // assigned gcache dimension
+	gcacheFootprint  int64   // expected file footprint in memory
+	gcacheLoad       float64 // gcache load adj factor base on type of load
+	memoryLeftover   int64   // memory free after all calculation
+	innodbRedoLogDim int64   // total redolog dimension
+	innoDBbpSize     int64   // Calculated BP to apply
+	//loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
 	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=MinConnectionNumber
 	loadFactor         float32 // Load factor for calculation based on loadAdjustment
 	loadID             int     // loadID coming from request
@@ -46,14 +47,21 @@ type references struct {
 	memoryPmm          float64 // memory assigned to pmm
 	gcscache           int64   // assigned GR GCScache dimension
 	gcscacheFootprint  int64   // GR GCScache expected file footprint in memory
-	gcscacheLoad       float64 // GR GCScache load adj factor base on memory available
+	gcscacheLoad       float64 // // TODO make it dynamic as for PXC GCSCache. GR GCScache load adj factor base on memory available
 }
 
 // GetAllGaleraProviderOptionsAsString returns all provider options considered as a single string
 func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 	var b bytes.Buffer
 
-	for key, param := range c.providerParams {
+	keys := make([]string, 0, len(c.providerParams))
+	for k := range c.providerParams {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		param := c.providerParams[key]
 		b.WriteString(key)
 		b.WriteString(`=`)
 		if param.Value >= 0 {
@@ -74,6 +82,8 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	} else {
 		dim = r.Dimension
 	}
+
+	c.request = r
 
 	load := conf.GetLoadByID(r.LoadType.Id)
 	if load.Id == 0 || dim.Id == 0 {
@@ -116,7 +126,6 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 
 	var p ProviderParam
 	c.families = fam
-	c.request = r
 	c.providerParams = p.Init()
 
 	return message, false
@@ -342,18 +351,24 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 	var redologTotDimension int64
 	baseDim := float32(c.reference.idealBufferPoolDIm)
 
+	redologIndex := 0.0
+
 	switch c.reference.loadID {
 	case LoadTypeSomeWrites:
-		redologTotDimension = int64(baseDim * (0.2 + (0.2 * c.reference.loadFactor)))
+		redologIndex = float64(0.7 + (0.5 * c.reference.loadFactor))
 	case LoadTypeEqualReadsWrites:
-		redologTotDimension = int64(baseDim * (0.3 + (0.3 * c.reference.loadFactor)))
+		redologIndex = float64(0.8 + (0.5 * c.reference.loadFactor))
 	case LoadTypeHeavyWrites:
 		// TODO this is mainly in case of injest and it may need more calculation, probably if connected to PMM for now is good like this
-		redologTotDimension = int64(baseDim * (0.4 + (0.4 * c.reference.loadFactor)))
+		redologIndex = float64(0.9 + (0.5 * c.reference.loadFactor))
 	default:
-		redologTotDimension = int64(baseDim * (0.15 + (0.15 * c.reference.loadFactor)))
+		redologIndex = float64(0.6 + (0.5 * c.reference.loadFactor))
 	}
 
+	if redologIndex > float64(1.0) {
+		redologIndex = 1.0
+	}
+	redologTotDimension = int64(float64(baseDim) * redologIndex)
 	c.reference.innodbRedoLogDim = redologTotDimension
 
 	// Access map once, modify directly
