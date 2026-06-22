@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 
@@ -65,13 +64,12 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 
 	// Calculate the resources by the number of given connections
 	if calculateByConnection {
-		calcErr, message, Families = moc.getCalculateInt()
 		for message.MType == OverutilizingI {
 			dimension, _ := moc.Conf.ScaleDimension(moc.IncomingRequest.Dimension)
 			moc.IncomingRequest.Dimension = dimension
 			calcErr, message, Families = moc.getCalculateInt()
 		}
-		message.MText += "\n!!!! Minimal Resources needed to serve.\nCalculated to match connections request\n\n"
+		message.MText += "\n!!!! Baseline resource allocation is calculated to match projected connection volume at minimum viable capacity.\n\n"
 		message.MName = message.GetMessageText(ResourcesRecalculated)
 		message.MType = ResourcesRecalculated
 	}
@@ -168,16 +166,16 @@ func (moc *MysqlOperatorCalculator) getCalculateInt() (error, ResponseMessage, m
 //	return request
 //}
 
-func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family) error {
-	var b bytes.Buffer
-
-	// NOTE: You had formatting logic commented out here.
-	// If `b` remains empty, writer.Write(b.Bytes()) will write nothing.
-
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Write(b.Bytes())
-	return nil
-}
+//func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family) error {
+//	var b bytes.Buffer
+//
+//	// NOTE: You had formatting logic commented out here.
+//	// If `b` remains empty, writer.Write(b.Bytes()) will write nothing.
+//
+//	writer.Header().Set("Content-Type", "application/json")
+//	writer.Write(b.Bytes())
+//	return nil
+//}
 
 func (moc *MysqlOperatorCalculator) GetHumanOutput(message ResponseMessage, request ConfigurationRequest, families map[string]Family) (bytes.Buffer, error) {
 	var b bytes.Buffer
@@ -239,12 +237,12 @@ func exitWithCode(errorCode int) {
 	os.Exit(errorCode)
 }
 
-func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family, errorMessage string) error {
-	message.MType = ErrorexecI
-	message.MName = "Invalid incoming request"
-	message.MText = fmt.Sprintf(message.GetMessageText(message.MType), errorMessage)
-	return ReturnResponse(writer, request, ConfRequest, message, families)
-}
+//func returnErrorMessage(writer http.ResponseWriter, request *http.Request, ConfRequest *ConfigurationRequest, message ResponseMessage, families map[string]Family, errorMessage string) error {
+//	message.MType = ErrorexecI
+//	message.MName = "Invalid incoming request"
+//	message.MText = fmt.Sprintf(message.GetMessageText(message.MType), errorMessage)
+//	return ReturnResponse(writer, request, ConfRequest, message, families)
+//}
 
 //=====================================================
 //Families section

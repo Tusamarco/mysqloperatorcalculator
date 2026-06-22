@@ -107,7 +107,11 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	}
 
 	c.reference.loadFactor = loadConnectionFactor
-	c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValuePXC)
+	if c.request.DBType == DbTypePXC {
+		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValuePXC)
+	} else {
+		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValueGR)
+	}
 	c.reference.gcacheLoad = c.getGcacheLoad()
 
 	var p ProviderParam
@@ -257,16 +261,17 @@ func (c *Configurator) getGcache() {
 	c.reference.memoryLeftover -= c.reference.gcacheFootprint
 }
 
-func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
-	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
-
-	switch c.reference.loadID {
-	case LoadTypeMostlyReads, LoadTypeSomeWrites, LoadTypeEqualReadsWrites, LoadTypeHeavyWrites:
-		return impedance
-	default:
-		return float32(c.reference.loadAdjustmentMax)
-	}
-}
+//
+//func (c *Configurator) getAdjFactor(loadConnectionFactor float32) float32 {
+//	impedance := loadConnectionFactor / float32(c.reference.loadAdjustmentMax)
+//
+//	switch c.reference.loadID {
+//	case LoadTypeMostlyReads, LoadTypeSomeWrites, LoadTypeEqualReadsWrites, LoadTypeHeavyWrites:
+//		return impedance
+//	default:
+//		return float32(c.reference.loadAdjustmentMax)
+//	}
+//}
 
 func (c *Configurator) getConnectionBuffers() {
 	group := c.families["mysql"].Groups["configuration_connection"]
@@ -342,6 +347,9 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 		redologTotDimension = int64(baseDim * (0.2 + (0.2 * c.reference.loadFactor)))
 	case LoadTypeEqualReadsWrites:
 		redologTotDimension = int64(baseDim * (0.3 + (0.3 * c.reference.loadFactor)))
+	case LoadTypeHeavyWrites:
+		// TODO this is mainly in case of injest and it may need more calculation, probably if connected to PMM for now is good like this
+		redologTotDimension = int64(baseDim * (0.4 + (0.4 * c.reference.loadFactor)))
 	default:
 		redologTotDimension = int64(baseDim * (0.15 + (0.15 * c.reference.loadFactor)))
 	}
@@ -487,15 +495,15 @@ func (c *Configurator) CalculateReturnBytes(incomingBytes int64) int64 {
 	MinThreshold := int64(300 * Megabyte)
 	MaxThreshold := int64(2 * Gigabyte)
 
-	MinPercent := 0.20 // 50%
-	MaxPercent := 0.85 // 90%
+	MinPercent := 0.20 // 20% returned at or below MinThreshold
+	MaxPercent := 0.85 // 85% returned at or above MaxThreshold
 
-	// 1. Handle the minimum threshold (300 MB or below = 50%)
+	// 1. Handle the minimum threshold (300 MB or below → return 20%)
 	if incomingBytes <= MinThreshold {
 		return int64(float64(incomingBytes) * MinPercent)
 	}
 
-	// 2. Handle the maximum threshold (2 GB or above = 99%)
+	// 2. Handle the maximum threshold (2 GB or above → return 85%)
 	if incomingBytes >= MaxThreshold {
 		return int64(float64(incomingBytes) * MaxPercent)
 	}
@@ -504,7 +512,7 @@ func (c *Configurator) CalculateReturnBytes(incomingBytes int64) int64 {
 	// Calculate how far along the input is between the min and max thresholds (0.0 to 1.0)
 	progress := float64(incomingBytes-MinThreshold) / float64(MaxThreshold-MinThreshold)
 
-	// Apply that progress to our percentage range (0.50 to 0.99)
+	// Apply that progress to our percentage range (20% to 85%)
 	percentage := MinPercent + (progress * (MaxPercent - MinPercent))
 
 	// Calculate and return the final byte count
@@ -785,31 +793,24 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 		considering the cost of connection x how much of the group_replication_message_cache_size
 		we can use considering the maximum the default?
 	*/
-
+	// TODO: gcsFactor is currently unbounded. A high connection count relative to CPU
+	// (e.g. 200 connections on a 1-core node: gcsFactor = 200/100 = 2.0) can produce a
+	// GCS cache larger than available MySQL memory, pushing memoryLeftover deeply negative
+	// and collapsing the InnoDB buffer pool below MinLimitGR.
+	// Fix: cap gcsFactor at MaxGCSCacheFactor (e.g. 4.0) AND cap the result at
+	// memoryLeftover/3 to mirror the GCache guard in getGcache().
 	mem, _ := strconv.ParseFloat(parameter.Default, 64)
 
 	gcsFactor := float64(c.reference.connections) / float64(c.reference.cpus/GCSConnWeight)
 	mem *= gcsFactor
 
-	// TODO deprecated
-	//switch c.reference.loadID {
-	//case LoadTypeMostlyReads:
-	//	mem *= GCSWeightRead
-	//case LoadTypeSomeWrites:
-	//	mem *= GCSWeightReadLightWrite
-	//case LoadTypeEqualReadsWrites:
-	//	mem *= GCSWeightReadWrite
-	//case LoadTypeHeavyWrites:
-	//	mem *= GCSWeightReadHeavyWrite
-	//}
-
-	//mem *= float64(c.reference.loadFactor)
 	val := parameter.Min
 
 	if uint64(mem) >= val {
 		parameter.Value = strconv.FormatUint(uint64(mem), 10)
 	} else {
-		parameter.Value = strconv.FormatUint(val*2, 10)
+		// If the value calculated is less than the minimum, we adjust the value to minimum value.
+		parameter.Value = strconv.FormatUint(val, 10)
 	}
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
@@ -862,17 +863,24 @@ func (c *Configurator) paramGroupReplicationMessageMaxSize(parameter Parameter) 
 	}
 
 	val := float64(pval)
-	switch c.request.Dimension.Id {
+	switch c.request.LoadType.Id {
 	case 1:
-		// val remains identical
+		val *= 1.0
 	case 2:
-		val *= 0.9
+		val *= 1.5
 	case 3:
-		val *= 0.8
+		val *= 2.0
 	case 4:
-		val *= 0.7
+		val *= 2.2
 	default:
-		parameter.Value = parameter.Default
+		parameter.Value = parameter.Value
+	}
+
+	defVl, _ := strconv.ParseUint(parameter.Default, 10, 64)
+	if uint64(val) > defVl {
+		parameter.Value = strconv.FormatUint(defVl, 10)
+		return parameter
+	} else if uint64(val) < parameter.Min {
 		return parameter
 	}
 
@@ -905,26 +913,27 @@ func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter Parameter) P
 	return parameter
 }
 
-func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter Parameter) Parameter {
-	val := int64(parameter.Min) // 126 KB
-
-	switch c.request.Dimension.Id {
-	case 1:
-		// val remains identical
-	case 2:
-		val *= 2
-	case 3:
-		val *= 4
-	case 4:
-		val *= 6
-	default:
-		parameter.Value = parameter.Default
-		return parameter
-	}
-
-	parameter.Value = strconv.FormatInt(val, 10)
-	return parameter
-}
+// TODO disabled for now
+//func (c *Configurator) paramGroupReplicationCompressionThreshold(parameter Parameter) Parameter {
+//	val := int64(parameter.Min) // 126 KB
+//
+//	switch c.request.Dimension.Id {
+//	case 1:
+//		// val remains identical
+//	case 2:
+//		val *= 2
+//	case 3:
+//		val *= 4
+//	case 4:
+//		val *= 6
+//	default:
+//		parameter.Value = parameter.Default
+//		return parameter
+//	}
+//
+//	parameter.Value = strconv.FormatInt(val, 10)
+//	return parameter
+//}
 
 func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter {
 	val := c.request.Connections

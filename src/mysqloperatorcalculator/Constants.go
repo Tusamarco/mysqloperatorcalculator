@@ -98,16 +98,20 @@ const (
 
 	// ---------------------------------------------------------------------------
 	// Minimum buffer pool floors
-	// Prevent the buffer pool from being squeezed below a usable size when many
-	// connections with large per-connection buffers are requested.
+	// These constants serve two roles:
+	//   1. paramInnoDBBufferPool enforces them as a fraction of MySQL-allocated memory
+	//      to prevent the buffer pool shrinking dangerously low under connection pressure.
+	//   2. FillResponseMessage evaluates them as a fraction of total dimension memory
+	//      to classify the response (OkI / ClosetolimitI / OverutilizingI).
 	// ---------------------------------------------------------------------------
 
-	// MinLimitPXC: InnoDB buffer pool will never drop below 50% of MySQL memory in
-	// a PXC deployment, even under extreme connection pressure.
+	// MinLimitPXC: InnoDB buffer pool floor for PXC — 50% of total dimension memory
+	// as the response evaluation threshold; ~62% of MySQL memory as the hard floor.
 	MinLimitPXC = 0.50
 
-	// MinLimitGR: same floor for Group Replication, set lower because GR needs more
-	// memory headroom for certification and message caches.
+	// MinLimitGR: same floor for Group Replication — 40% of total dimension memory
+	// as the evaluation threshold. Set lower than PXC because GR needs more headroom
+	// for certification and message caches.
 	MinLimitGR = 0.40
 
 	// MemoryFreeMinimumLimit reserves 2% of total MySQL memory, never allocated to

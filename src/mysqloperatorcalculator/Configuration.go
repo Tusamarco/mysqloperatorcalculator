@@ -281,7 +281,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"resources": {"resources", map[string]Parameter{
 			"request_memory": {"memory", "request", "resources", "1", "1", 1, 2, MySQLVersions{}},
 			"request_cpu":    {"cpu", "request", "resources", "1000", "1000", 1000, 2000, MySQLVersions{}},
-			"limit_memory":   {"memory", "limit", "resources", "1", "!", 1, 2, MySQLVersions{}},
+			"limit_memory":   {"memory", "limit", "resources", "1", "1", 1, 2, MySQLVersions{}},
 			"limit_cpu":      {"cpu", "limit", "resources", "1000", "1000", 1000, 2000, MySQLVersions{}},
 		}},
 	}
@@ -292,7 +292,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		"resources": {"resources", map[string]Parameter{
 			"request_memory": {"memory", "request", "resources", "1", "1", 1, 2, MySQLVersions{}},
 			"request_cpu":    {"cpu", "request", "resources", "1000", "1000", 100, 2000, MySQLVersions{}},
-			"limit_memory":   {"memory", "limit", "resources", "1", "!", 1, 2, MySQLVersions{}},
+			"limit_memory":   {"memory", "limit", "resources", "1", "1", 1, 2, MySQLVersions{}},
 			"limit_cpu":      {"cpu", "limit", "resources", "1000", "1000", 100, 2000, MySQLVersions{}},
 		}},
 	}

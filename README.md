@@ -101,7 +101,7 @@ The calculator treats PXC and Group Replication differently because their intern
 |:---|:---|:---|
 | **InnoDB Buffer Pool ceiling** | Up to **80%** of MySQL memory | Up to **70%** of MySQL memory |
 | **Reasoning** | Galera’s GCache footprint is relatively small and stable. | GR’s **certification cache** can bloat during long transactions, risking OOM kills. |
-| **Min. InnoDB Memory floor** | `0.50` (50% of MySQL memory) | `0.40` (40% of MySQL memory) |
+| **Min. InnoDB Memory floor** | `0.50` (50% of total dimension memory; ~62% of MySQL memory) | `0.40` (40% of total dimension memory; ~50% of MySQL memory) |
 | **Fixed GCS overhead** | N/A | 50 MiB reserved for the GR message-cache structure |
 | **Tuning Constants** | `GcacheFootPrintFactorRead = 0.5`, etc. | Additional `GroupRepGCSCacheMemStructureCost` reserved. |
 
@@ -651,8 +651,8 @@ All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The 
 |:---|:---:|:---|
 | `InnoDBPctValuePXC` | `0.80` | Maximum fraction of MySQL memory that may be given to InnoDB buffer pool in PXC. Galera GCache is stable and small, so a higher ceiling is safe. |
 | `InnoDBPctValueGR` | `0.70` | Same ceiling for Group Replication. GR's certification cache can spike during long writes; a lower ceiling prevents OOM kills. |
-| `MinLimitPXC` | `0.50` | Minimum fraction of MySQL memory InnoDB buffer pool may occupy in PXC. Prevents the pool from being squeezed below a usable size under connection pressure. |
-| `MinLimitGR` | `0.40` | Same floor for Group Replication. Set lower because GR needs more headroom for internal caches. |
+| `MinLimitPXC` | `0.50` | Used in two ways: (1) hard floor — buffer pool will not shrink below 50% of MySQL-allocated memory; (2) response evaluation threshold — `OverutilizingI` is returned if the buffer pool falls below 50% of total dimension memory. |
+| `MinLimitGR` | `0.40` | Same dual role for Group Replication. Set lower than PXC because GR needs more headroom for certification and message caches. |
 | `MemoryFreeMinimumLimit` | `0.02` | 2% of MySQL memory reserved and never allocated, as a safety margin for OS paging and allocator overhead. |
 
 ### Group Replication GCS cache
@@ -751,11 +751,11 @@ memoryLeftover        = memoryMySQL − connBuffersMemTot
 
 The redo log is sized as a fraction of the ideal buffer pool (`memoryMySQL × 0.80`), scaled by `loadFactor`:
 
-| Load type | Formula |
-|:---|:---|
-| `SomeWrites` | `idealBP × (0.20 + 0.20 × loadFactor)` |
+| Load type          | Formula |
+|:-------------------|:---|
+| `MostlyReads`      | `idealBP × (0.20 + 0.20 × loadFactor)` |
 | `EqualReadsWrites` | `idealBP × (0.30 + 0.30 × loadFactor)` |
-| `MostlyReads` / `HeavyWrites` | `idealBP × (0.15 + 0.15 × loadFactor)` |
+| `HeavyWrites`      | `idealBP × (0.40 + 0.40 × loadFactor)` |
 
 The result is written to both `innodb_redo_log_capacity` (MySQL 8.0.31+) and the legacy pair `innodb_log_file_size` / `innodb_log_files_in_group`.
 
