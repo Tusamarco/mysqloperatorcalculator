@@ -177,6 +177,7 @@ func (conf *Configuration) Init() {
 		{1, "Mainly Reads", "Blogs ~10% Writes 90% Reads"},
 		{2, "Light OLTP", "Shops online up to ~40% Writes "},
 		{3, "Heavy OLTP", "Intense analytics, telephony, gaming. 30/70% Reads and Writes"},
+		{4, "Mainly write", "Data load, data ingest. 90% writes"},
 	}
 
 	conf.Connections = []int{50, 100, 200, 500, 1000, 2000}

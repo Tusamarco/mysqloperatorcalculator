@@ -464,11 +464,11 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 
 	if !final {
 		bufferPool := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
-		bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
+		//bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
 
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
 		c.reference.innoDBbpSize = bufferPool
-		c.reference.memoryLeftover -= bufferPoolSubstract
+		c.reference.memoryLeftover -= bufferPool //bufferPoolSubstract
 	} else {
 		bufferPool := int64(0)
 

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
 	log "github.com/sirupsen/logrus"
@@ -20,14 +21,16 @@ func main() {
 	var (
 		//port    int
 		//ip      string
-		helpB   bool
-		version bool
-		help    HelpText
+		helpB    bool
+		version  bool
+		help     HelpText
+		loglevel string
 	)
 	port := flag.Int("port", 8080, "Port to serve")
 	ip := flag.String("address", "0.0.0.0", "Ip address")
 	flag.BoolVar(&helpB, "help", false, "for help")
 	flag.BoolVar(&version, "version", false, "to get product version")
+	flag.StringVar(&loglevel, "loglevel", "DEBUG", "log level default debug (ERROR|INFO|DEBUG)")
 	flag.Parse()
 
 	//initialize help
@@ -43,7 +46,18 @@ func main() {
 	}
 
 	//set log level
-	log.SetLevel(log.DebugLevel)
+	loglevel = strings.ToUpper(loglevel)
+	switch loglevel {
+	case "ERROR":
+		log.SetLevel(log.ErrorLevel)
+	case "INFO":
+		log.SetLevel(log.InfoLevel)
+	case "DEBUG":
+		log.SetLevel(log.DebugLevel)
+	default:
+		log.SetLevel(log.DebugLevel)
+
+	}
 
 	//set server address (need to come from configuration parameter)
 	server := http.Server{Addr: *ip + ":" + strconv.Itoa(*port)}
@@ -51,7 +65,11 @@ func main() {
 	//define API handlers
 	http.HandleFunc("/calculator", handleRequestCalculator)
 	http.HandleFunc("/supported", handleRequestSupported)
-	server.ListenAndServe()
+	err := server.ListenAndServe()
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
 }
 
 func handleRequestSupported(writer http.ResponseWriter, request *http.Request) {
