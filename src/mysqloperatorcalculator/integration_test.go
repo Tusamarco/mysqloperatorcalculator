@@ -25,6 +25,28 @@ func runCalculate(req ConfigurationRequest) (error, ResponseMessage, map[string]
 	return moc.GetCalculate()
 }
 
+// redoLogCapacityBytes extracts innodb_redo_log_capacity from the returned families.
+func redoLogCapacityBytes(t *testing.T, families map[string]Family) int64 {
+	t.Helper()
+	mysql, ok := families[FamilyTypeMysql]
+	if !ok {
+		t.Fatal("mysql family missing from response")
+	}
+	innodb, ok := mysql.Groups["configuration_innodb"]
+	if !ok {
+		t.Fatal("configuration_innodb group missing")
+	}
+	param, ok := innodb.Parameters["innodb_redo_log_capacity"]
+	if !ok {
+		t.Skip("innodb_redo_log_capacity not present (version filter applied)")
+	}
+	val, err := strconv.ParseInt(param.Value, 10, 64)
+	if err != nil {
+		t.Fatalf("cannot parse innodb_redo_log_capacity %q: %v", param.Value, err)
+	}
+	return val
+}
+
 // bufferPoolBytes extracts innodb_buffer_pool_size from the returned families.
 func bufferPoolBytes(t *testing.T, families map[string]Family) int64 {
 	t.Helper()
@@ -221,6 +243,98 @@ func TestIntegration_ProbesAndResourcesPresent(t *testing.T) {
 				t.Errorf("family %q group %q has no parameters", familyName, group)
 			}
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// HeavyWrites (load type 4) — end-to-end
+// ---------------------------------------------------------------------------
+
+// Happy path: PXC + HeavyWrites produces a valid configuration.
+func TestIntegration_PXC_HeavyWrites_OK(t *testing.T) {
+	err, msg, families := runCalculate(makeRequest(DbTypePXC, 3, LoadTypeHeavyWrites, 100))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.MType == OverutilizingI {
+		t.Errorf("unexpected OverutilizingI: %s", msg.MText)
+	}
+	if bufferPoolBytes(t, families) <= 0 {
+		t.Error("innodb_buffer_pool_size must be > 0")
+	}
+	if redoLogCapacityBytes(t, families) <= 0 {
+		t.Error("innodb_redo_log_capacity must be > 0")
+	}
+}
+
+// Happy path: GR + HeavyWrites produces a valid configuration with GCS cache set.
+func TestIntegration_GR_HeavyWrites_OK(t *testing.T) {
+	err, msg, families := runCalculate(makeRequest(DbTypeGroupReplication, 3, LoadTypeHeavyWrites, 100))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.MType == OverutilizingI {
+		t.Errorf("unexpected OverutilizingI: %s", msg.MText)
+	}
+	if bufferPoolBytes(t, families) <= 0 {
+		t.Error("innodb_buffer_pool_size must be > 0")
+	}
+
+	mysql := families[FamilyTypeMysql]
+	grGroup, ok := mysql.Groups["configuration_groupReplication"]
+	if !ok {
+		t.Fatal("configuration_groupReplication group missing for GR+HeavyWrites request")
+	}
+	gcs, ok := grGroup.Parameters["loose_group_replication_message_cache_size"]
+	if !ok {
+		t.Fatal("loose_group_replication_message_cache_size missing")
+	}
+	val, _ := strconv.ParseInt(gcs.Value, 10, 64)
+	if val <= 0 {
+		t.Errorf("loose_group_replication_message_cache_size must be > 0, got %d", val)
+	}
+}
+
+// HeavyWrites saturates a dimension at fewer connections than EqualReadsWrites
+// because its CPU-per-connection cost factor (2.0) is higher than EqualReadsWrites (1.6).
+func TestIntegration_HeavyWrites_SaturatesEarlierThanEqualReadsWrites(t *testing.T) {
+	// Find the connection count that overloads HeavyWrites but not EqualReadsWrites
+	// on XSmall (MysqlCPU=600m): HeavyWrites max = 600/2=300, EqualReadsWrites max = 600/1.6=375
+	_, msgHW, _ := runCalculate(makeRequest(DbTypePXC, 1, LoadTypeHeavyWrites, 350))
+	_, msgEq, _ := runCalculate(makeRequest(DbTypePXC, 1, LoadTypeEqualReadsWrites, 350))
+
+	if msgHW.MType != OverutilizingI && msgHW.MType != ConnectionRecalculated {
+		t.Errorf("expected HeavyWrites to saturate at 350 connections on XSmall, got MType=%d", msgHW.MType)
+	}
+	if msgEq.MType == OverutilizingI {
+		t.Errorf("EqualReadsWrites should not saturate at 350 connections on XSmall, got MType=%d", msgEq.MType)
+	}
+}
+
+// Redo log must increase monotonically with write intensity for identical resources and connections.
+// Uses Large dimension (id=4) with low connections to keep loadFactor small and avoid the 1.0 cap.
+func TestIntegration_HeavyWrites_RedoLog_MonotonicByLoadType(t *testing.T) {
+	const dim = 4  // Large — MysqlCPU=5500m, high enough that 50 connections yields a low loadFactor
+	const conn = 50
+
+	_, _, famMR := runCalculate(makeRequest(DbTypePXC, dim, LoadTypeMostlyReads, conn))
+	_, _, famSW := runCalculate(makeRequest(DbTypePXC, dim, LoadTypeSomeWrites, conn))
+	_, _, famEq := runCalculate(makeRequest(DbTypePXC, dim, LoadTypeEqualReadsWrites, conn))
+	_, _, famHW := runCalculate(makeRequest(DbTypePXC, dim, LoadTypeHeavyWrites, conn))
+
+	redoMR := redoLogCapacityBytes(t, famMR)
+	redoSW := redoLogCapacityBytes(t, famSW)
+	redoEq := redoLogCapacityBytes(t, famEq)
+	redoHW := redoLogCapacityBytes(t, famHW)
+
+	if redoSW <= redoMR {
+		t.Errorf("SomeWrites redo log %d should be > MostlyReads %d", redoSW, redoMR)
+	}
+	if redoEq <= redoSW {
+		t.Errorf("EqualReadsWrites redo log %d should be > SomeWrites %d", redoEq, redoSW)
+	}
+	if redoHW <= redoEq {
+		t.Errorf("HeavyWrites redo log %d should be > EqualReadsWrites %d", redoHW, redoEq)
 	}
 }
 

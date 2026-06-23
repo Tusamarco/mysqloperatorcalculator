@@ -89,7 +89,7 @@ func TestGetDimensionByID_MemoryBytes(t *testing.T) {
 func TestGetLoadByID_Valid(t *testing.T) {
 	var conf Configuration
 	conf.Init()
-	for _, id := range []int{LoadTypeMostlyReads, LoadTypeSomeWrites, LoadTypeEqualReadsWrites} {
+	for _, id := range []int{LoadTypeMostlyReads, LoadTypeSomeWrites, LoadTypeEqualReadsWrites, LoadTypeHeavyWrites} {
 		load := conf.GetLoadByID(id)
 		if load.Id != id {
 			t.Errorf("GetLoadByID(%d) returned Id=%d", id, load.Id)
