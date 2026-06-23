@@ -2,7 +2,7 @@ package mysqloperatorcalculator
 
 const (
 	// VERSION is embedded in the --version CLI flag and in the /supported API response.
-	VERSION = "v1.20.0"
+	VERSION = "v1.20.1"
 
 	// ---------------------------------------------------------------------------
 	// Response message type codes — returned as message.type in every response.
