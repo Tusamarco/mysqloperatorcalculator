@@ -46,8 +46,10 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 		return fmt.Errorf("Open dimension request missing CPU OR Memory value CPU: %d, Memory %s", ConfRequest.Dimension.Cpu, ConfRequest.Dimension.Memory), responseMsg, families
 	}
 
-	if ConfRequest.DBType != DbTypePXC && ConfRequest.DBType != DbTypeGroupReplication {
-		return fmt.Errorf("DB Type is not correct. Supported Types are: %s, %s", DbTypePXC, DbTypeGroupReplication), responseMsg, families
+	if ConfRequest.DBType != DbTypePXC &&
+		ConfRequest.DBType != DbTypeGroupReplication &&
+		ConfRequest.DBType != DbTypeAsync {
+		return fmt.Errorf("DB Type is not correct. Supported Types are: %s, %s, %s", DbTypePXC, DbTypeGroupReplication, DbTypeAsync), responseMsg, families
 	}
 
 	// If calculating by connection (id = 998) and valid number for connection

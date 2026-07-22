@@ -117,9 +117,12 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 	}
 
 	c.reference.loadFactor = loadConnectionFactor
-	if c.request.DBType == DbTypePXC {
+	switch c.request.DBType {
+	case DbTypePXC:
 		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValuePXC)
-	} else {
+	case DbTypeAsync:
+		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValueAsync)
+	default:
 		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValueGR)
 	}
 	c.reference.gcacheLoad = c.getGcacheLoad()
@@ -185,6 +188,10 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			c.families["mysql"].Groups["configuration_groupReplication"] = group
 		}
 
+		if c.request.DBType == DbTypeAsync {
+			c.getAsyncParameters()
+		}
+
 		// Before returning the values we want tore recover any left over from the memory and assign back to the buffer pool by a %
 		c.getInnodbBufferPool(true)
 
@@ -194,6 +201,70 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 	}
 
 	return c.filterByMySQLVersion()
+}
+
+func (c *Configurator) getAsyncParameters() {
+	// --- server group: binlog behaviour ---
+	serverGroup := c.families["mysql"].Groups["configuration_server"]
+
+	// binlog_row_image: MINIMAL only for mostly-reads; FULL otherwise (safe for downstream GR consumers and conflict detection).
+	binlogRowImage := serverGroup.Parameters["binlog_row_image"]
+	binlogRowImage.Value = c.loadValues([4]string{"MINIMAL", "FULL", "FULL", "FULL"})
+	serverGroup.Parameters["binlog_row_image"] = binlogRowImage
+
+	// binlog_expire_logs_seconds: shrink retention on heavy write to bound disk.
+	binlogExpireSec := serverGroup.Parameters["binlog_expire_logs_seconds"]
+	binlogExpireSec.Value = c.loadValues([4]string{"604800", "604800", "432000", "259200"})
+	serverGroup.Parameters["binlog_expire_logs_seconds"] = binlogExpireSec
+	c.families["mysql"].Groups["configuration_server"] = serverGroup
+
+	// --- innodb group: durability. Any node may be promoted, so require 1. ---
+	innoDBGroup := c.families["mysql"].Groups["configuration_innodb"]
+	FlushLogTrxCommit := innoDBGroup.Parameters["innodb_flush_log_at_trx_commit"]
+	FlushLogTrxCommit.Value = "1"
+	innoDBGroup.Parameters["innodb_flush_log_at_trx_commit"] = FlushLogTrxCommit
+	c.families["mysql"].Groups["configuration_innodb"] = innoDBGroup
+
+	// --- async group: relay/apply tuning ---
+	asyncGroup := c.families["mysql"].Groups["configuration_async"]
+
+	// sync_relay_log: crash-safe (1) on write-heavy; performance (0) on read-heavy.
+	syncRelayLog := asyncGroup.Parameters["sync_relay_log"]
+	{
+		defaultInt, err := strconv.Atoi(syncRelayLog.Default)
+		if err != nil {
+			log.Error(err)
+			defaultInt = 10000
+		}
+		syncRelayLog.Value = c.loadValues([4]string{syncRelayLog.Default, syncRelayLog.Default,
+			strconv.Itoa(defaultInt / 2),
+			strconv.Itoa(defaultInt / 3)})
+	}
+	asyncGroup.Parameters["sync_relay_log"] = syncRelayLog
+
+	// replica_net_timeout: base 60s, scaled up with load.
+	replicaNetTimeout := asyncGroup.Parameters["replica_net_timeout"]
+	replicaNetTimeout.Value = strconv.Itoa(int(math.Ceil(60 * (1 + float64(c.reference.loadFactor)))))
+	asyncGroup.Parameters["replica_net_timeout"] = replicaNetTimeout
+
+	// replica_checkpoint_period: scaled to match the higher writes.
+	replicaCheckpointPeriod := asyncGroup.Parameters["replica_checkpoint_period"]
+	{
+		defaultInt, err := strconv.Atoi(replicaCheckpointPeriod.Default)
+		if err != nil {
+			log.Error(err)
+			defaultInt = 300
+		}
+
+		replicaCheckpointPeriod.Value = c.loadValues([4]string{
+			strconv.Itoa(defaultInt),
+			strconv.Itoa(defaultInt),
+			strconv.Itoa(int(float64(defaultInt) * 0.80)),
+			strconv.Itoa(int(float64(defaultInt) * 0.70))})
+	}
+	asyncGroup.Parameters["replica_checkpoint_period"] = replicaCheckpointPeriod
+
+	c.families["mysql"].Groups["configuration_async"] = asyncGroup
 }
 
 func (c *Configurator) filterByMySQLVersion() map[string]Family {
@@ -284,8 +355,10 @@ func (c *Configurator) getGcache() {
 
 func (c *Configurator) getConnectionBuffers() {
 	group := c.families["mysql"].Groups["configuration_connection"]
-	//group.Parameters["binlog_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_cache_size"])
-	//group.Parameters["binlog_stmt_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_stmt_cache_size"])
+	if c.request.DBType == DbTypeAsync {
+		group.Parameters["binlog_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_cache_size"])
+		group.Parameters["binlog_stmt_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_stmt_cache_size"])
+	}
 	group.Parameters["join_buffer_size"] = c.paramJoinBuffer(group.Parameters["join_buffer_size"])
 	group.Parameters["read_rnd_buffer_size"] = c.paramReadRndBuffer(group.Parameters["read_rnd_buffer_size"])
 	group.Parameters["sort_buffer_size"] = c.paramSortBuffer(group.Parameters["sort_buffer_size"])
@@ -457,14 +530,18 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 }
 
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Parameter {
-	bufferPollPct := InnoDBPctValueGR
-	if c.request.DBType == "pxc" {
+	bufferPollPct := 1.0
+	switch c.request.DBType {
+	case DbTypePXC:
 		bufferPollPct = InnoDBPctValuePXC
+	case DbTypeAsync:
+		bufferPollPct = InnoDBPctValueAsync
+	case DbTypeGroupReplication:
+		bufferPollPct = InnoDBPctValueGR
 	}
 
 	if !final {
 		bufferPool := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
-		//bufferPoolSubstract := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
 
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
 		c.reference.innoDBbpSize = bufferPool
@@ -485,10 +562,20 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 			c.reference.memoryLeftover = 0
 
 			// Enforce minimum buffer pool floor to prevent going dangerously low
-			minPct := MinLimitGR
-			if c.request.DBType == "pxc" {
+			//minPct := MinLimitGR
+			//if c.request.DBType == "pxc" {
+			//	minPct = MinLimitPXC
+			//}
+			minPct := 1.0
+			switch c.request.DBType {
+			case DbTypePXC:
 				minPct = MinLimitPXC
+			case DbTypeAsync:
+				minPct = MinLimitAsync
+			case DbTypeGroupReplication:
+				minPct = MinLimitGR
 			}
+
 			minBufferPool := int64(c.reference.memoryMySQL * minPct)
 			if bufferPool < minBufferPool {
 				bufferPool = minBufferPool
@@ -962,11 +1049,16 @@ func (c *Configurator) paramServerThreadCacheSize(parameter Parameter) Parameter
 
 func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b bytes.Buffer, DBType string) (ResponseMessage, bool) {
 	overUtilizing := false
-	minlimit := float64(MinLimitPXC)
-	if DBType == "group_replication" {
-		minlimit = float64(MinLimitGR)
-	}
+	minlimit := 0.30
 
+	switch DBType {
+	case DbTypeGroupReplication:
+		minlimit = float64(MinLimitGR)
+	case DbTypeAsync:
+		minlimit = float64(MinLimitAsync)
+	case DbTypePXC:
+		minlimit = float64(MinLimitPXC)
+	}
 	// Not used anymore the memory leftover is managed dealing with the Bufferpool size
 	//if c.reference.memoryLeftover < 0 {
 	//	overUtilizing = true
@@ -1016,6 +1108,7 @@ func (c *Configurator) paramReplicaParallelWorkers(parameter Parameter) Paramete
 			value = proposedWorkers
 		}
 	}
+
 	parameter.Value = strconv.Itoa(value)
 	return parameter
 

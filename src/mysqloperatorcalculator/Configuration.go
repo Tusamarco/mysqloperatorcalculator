@@ -156,7 +156,7 @@ func (respM *ResponseMessage) GetMessageText(id int) string {
 }
 
 func (conf *Configuration) Init() {
-	conf.DBType = []string{DbTypeGroupReplication, DbTypePXC}
+	conf.DBType = []string{DbTypeGroupReplication, DbTypePXC, DbTypeAsync}
 	conf.Output = []string{ResultOutputFormatHuman, ResultOutputFormatJson}
 	conf.Dimension = []Dimension{
 		{1, "XSmall", 1000, "2GB", 2147483648, 600, 200, 100, 1825361100, 214748364, 107374182},
@@ -186,6 +186,8 @@ func (conf *Configuration) Init() {
 
 func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	// Group declarations shortened for brevity, functionally identical
+	asyncGroup := map[string]Parameter{}
+
 	replicaGroup := map[string]Parameter{
 		"replica_compressed_protocol":   {"replica_compressed_protocol", "configuration", "replication", "1", "1", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
 		"replica_exec_mode":             {"replica_exec_mode", "configuration", "replication", "STRICT", "STRICT", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
@@ -269,6 +271,28 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		}},
 	}
 
+	if DBTypeRequest == DbTypeAsync {
+		// Source-side binlog tuning — valid on any node (any node may be promoted).
+		connectionGroup["binlog_cache_size"] = Parameter{"binlog_cache_size", "configuration", "connection", "131072", "32768", 4096, 0, MySQLVersions{V8_0_46, V11_1_1}}
+		connectionGroup["binlog_stmt_cache_size"] = Parameter{"binlog_stmt_cache_size", "configuration", "connection", "131072", "32768", 4096, 0, MySQLVersions{V8_0_46, V11_1_1}}
+
+		serverGroup["binlog_format"] = Parameter{"binlog_format", "configuration", "server", "ROW", "ROW", 0, 0, MySQLVersions{V8_0_46, V11_1_1}}
+		serverGroup["binlog_row_image"] = Parameter{"binlog_row_image", "configuration", "server", "FULL", "FULL", 0, 0, MySQLVersions{V8_0_46, V11_1_1}}
+		serverGroup["binlog_expire_logs_seconds"] = Parameter{"binlog_expire_logs_seconds", "configuration", "server", "604800", "604800", 0, 0, MySQLVersions{V8_0_46, V11_1_1}}
+
+		// GTID — hardcoded requirement (FR gap #1); emitted to avoid silent misconfig.
+		serverGroup["gtid_mode"] = Parameter{"gtid_mode", "configuration", "server", "ON", "ON", 0, 0, MySQLVersions{V8_0_46, V11_1_1}}
+		serverGroup["enforce_gtid_consistency"] = Parameter{"enforce_gtid_consistency", "configuration", "server", "ON", "ON", 0, 0, MySQLVersions{V8_0_46, V11_1_1}}
+
+		// Replica/apply-side group — valid on any node (any node may demote).
+		asyncGroup = map[string]Parameter{
+			"relay_log_space_limit":     {"relay_log_space_limit", "configuration", "async", "0", "0", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+			"sync_relay_log":            {"sync_relay_log", "configuration", "async", "0", "10000", 0, 100000, MySQLVersions{V8_0_46, V11_1_1}},
+			"replica_net_timeout":       {"replica_net_timeout", "configuration", "async", "60", "60", 1, 0, MySQLVersions{V8_0_46, V11_1_1}},
+			"replica_checkpoint_period": {"replica_checkpoint_period", "configuration", "async", "300", "300", 1, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		}
+	}
+
 	haproxyGroups := map[string]GroupObj{
 		"readinessProbe": {"readinessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
@@ -309,6 +333,10 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 
 	if DBTypeRequest == DbTypeGroupReplication {
 		mysqlGroups["configuration_groupReplication"] = GroupObj{"groupReplication", groupReplicationGroup}
+	}
+
+	if DBTypeRequest == DbTypeAsync {
+		mysqlGroups["configuration_async"] = GroupObj{"async", asyncGroup}
 	}
 
 	return map[string]Family{
