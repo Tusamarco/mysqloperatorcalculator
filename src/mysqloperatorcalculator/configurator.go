@@ -370,22 +370,22 @@ func (c *Configurator) getConnectionBuffers() {
 }
 
 func (c *Configurator) paramBinlogCacheSize(inParameter Parameter) Parameter {
-	inParameter.Value = c.loadValues([4]string{"32768", "131072", "262144", "358400"})
+	inParameter.Value = c.loadValues([4]string{BinlogCacheSizeRead, BinlogCacheSizeLightWrite, BinlogCacheSizeHeavyOLTP, BinlogCacheSizeHeavyWrite})
 	return inParameter
 }
 
 func (c *Configurator) paramJoinBuffer(inParameter Parameter) Parameter {
-	inParameter.Value = c.loadValues([4]string{"262144", "524288", "1048576", "1048576"})
+	inParameter.Value = c.loadValues([4]string{JoinBufferSizeRead, JoinBufferSizeLightWrite, JoinBufferSizeHeavyOLTP, JoinBufferSizeHeavyWrite})
 	return inParameter
 }
 
 func (c *Configurator) paramReadRndBuffer(inParameter Parameter) Parameter {
-	inParameter.Value = c.loadValues([4]string{"262144", "393216", "707788", "707788"})
+	inParameter.Value = c.loadValues([4]string{ReadRndBufferSizeRead, ReadRndBufferSizeLightWrite, ReadRndBufferSizeHeavyOLTP, ReadRndBufferSizeHeavyWrite})
 	return inParameter
 }
 
 func (c *Configurator) paramSortBuffer(inParameter Parameter) Parameter {
-	inParameter.Value = c.loadValues([4]string{"262144", "524288", "1572864", "2097152"})
+	inParameter.Value = c.loadValues([4]string{SortBufferSizeRead, SortBufferSizeLightWrite, SortBufferSizeHeavyOLTP, SortBufferSizeHeavyWrite})
 	return inParameter
 }
 
@@ -562,10 +562,6 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 			c.reference.memoryLeftover = 0
 
 			// Enforce minimum buffer pool floor to prevent going dangerously low
-			//minPct := MinLimitGR
-			//if c.request.DBType == "pxc" {
-			//	minPct = MinLimitPXC
-			//}
 			minPct := 1.0
 			switch c.request.DBType {
 			case DbTypePXC:
@@ -829,6 +825,7 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	var b bytes.Buffer
 
 	// Fprintf is heavily optimized for constructing complex text blocks and eliminates numerous temporary strings
+	fmt.Fprintf(&b, "\n\nCluster Type    = %s\n", c.request.DBType)
 	fmt.Fprintf(&b, "\n\nTot Memory Bytes    = %.0f\n", c.reference.memory)
 	fmt.Fprintf(&b, "Tot CPU                 = %d\n", c.reference.cpus)
 	fmt.Fprintf(&b, "Tot Connections         = %d\n\n", c.reference.connections)

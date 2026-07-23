@@ -4,7 +4,7 @@
 
 The **MySQL Operator Calculator** is a robust Go library designed to dynamically calculate the optimal configurations, Kubernetes resource requests, and limits for MySQL deployments. Built specifically with Kubernetes Operators in mind, it analyzes target hardware dimensions, expected connections, and load profiles to generate highly tuned configurations for **MySQL**, **HAProxy (Proxy)**, and **Percona Monitoring and Management (Monitor)**.
 
-It supports both **Percona XtraDB Cluster (Galera / PXC)** and **MySQL Group Replication**, taking into account version-specific parameters and the hidden memory footprints of various MySQL internal structures (like GCache, GCS Cache, connection buffers, and temporary tables).
+It supports **Percona XtraDB Cluster (Galera / PXC)**, **MySQL Group Replication**, and **classic asynchronous source/replica replication**, taking into account version-specific parameters and the hidden memory footprints of various MySQL internal structures (like GCache, GCS Cache, connection buffers, and temporary tables).
 
 ### What It Does
 Given a set of total available resources (CPU/memory), a workload pattern, target connection count, and MySQL version, it generates:
@@ -32,7 +32,7 @@ All parameters are passed as a JSON payload to the `/calculator` endpoint or via
 | Parameter | Type | Required | Description |
 |:---|:---|:---:|:---|
 | `output` | `string` | **Yes** | `"json"` (structured) or `"human"` (my.cnf‑like text) |
-| `dbtype` | `string` | **Yes** | `"pxc"` or `"group_replication"` |
+| `dbtype` | `string` | **Yes** | `"pxc"`, `"group_replication"`, or `"async"` |
 | `dimension.id` | `int` | **Yes** | Pre‑defined ID (`1`…`n`), `998` (auto‑dimension by connections), or `999` (open request) |
 | `dimension.cpu` | `int` | *Cond.* | Required if `id=999`. Total CPU in millicores (e.g., `4000` = 4 full cores) |
 | `dimension.memory` | `string` | *Cond.* | Required if `id=999`. Total memory (e.g., `"2.5G"`, `"4096Mi"`, `"4GB"`) |
@@ -93,24 +93,27 @@ Three families are always present: `monitor`, `mysql`, and `proxy`. Each family 
 
 ---
 
-## ⚖️ PXC vs. Group Replication
+## ⚖️ PXC vs. Group Replication vs. Async
 
-The calculator treats PXC and Group Replication differently because their internal caches have distinct memory consumption patterns.
+The calculator treats each replication type differently because their internal caches have distinct memory consumption patterns.
 
-| Aspect | PXC (Galera) | Group Replication |
-|:---|:---|:---|
-| **InnoDB Buffer Pool ceiling** | Up to **80%** of MySQL memory | Up to **70%** of MySQL memory |
-| **Reasoning** | Galera’s GCache footprint is relatively small and stable. | GR’s **certification cache** can bloat during long transactions, risking OOM kills. |
-| **Min. InnoDB Memory floor** | `0.50` (50% of total dimension memory; ~62% of MySQL memory) | `0.40` (40% of total dimension memory; ~50% of MySQL memory) |
-| **Fixed GCS overhead** | N/A | 50 MiB reserved for the GR message-cache structure |
-| **Tuning Constants** | `GcacheFootPrintFactorRead = 0.5`, etc. | Additional `GroupRepGCSCacheMemStructureCost` reserved. |
+| Aspect | PXC (Galera) | Group Replication | Async (source/replica) |
+|:---|:---|:---|:---|
+| **InnoDB Buffer Pool ceiling** | Up to **80%** of MySQL memory | Up to **70%** of MySQL memory | Up to **82%** of MySQL memory |
+| **Reasoning** | Galera’s GCache footprint is relatively small and stable. | GR’s **certification cache** can bloat during long transactions, risking OOM kills. | No cluster caches compete; ceiling stays conservative so the node is safe while applying relay logs. |
+| **Min. InnoDB Memory floor** | `0.50` (50% of total dimension memory) | `0.40` (40% of total dimension memory) | `0.52` (52% of total dimension memory) |
+| **Fixed cluster overhead** | GCache footprint (load-dependent) | 50 MiB `GroupRepGCSCacheMemStructureCost` + per-connection GCS weight | None |
+| **Tuning Constants** | `GcacheFootPrintFactorRead = 0.5`, etc. | `GroupRepGCSCacheMemStructureCost`, `GCSConnWeight` | `InnoDBPctValueAsync`, `MinLimitAsync` |
+| **Role model** | All cluster nodes are symmetric | All cluster nodes are symmetric | Role-agnostic: same config is valid for source or replica; the Operator flips `read_only`/`super_read_only` at runtime |
 
 These constraints are mapped directly in the code:
 ```go
-InnoDBPctValuePXC  = 0.80
-InnoDBPctValueGR   = 0.70
-MinLimitPXC        = 0.50
-MinLimitGR         = 0.40
+InnoDBPctValuePXC   = 0.80
+InnoDBPctValueGR    = 0.70
+InnoDBPctValueAsync = 0.82
+MinLimitPXC         = 0.50
+MinLimitGR          = 0.40
+MinLimitAsync       = 0.52
 ```
 
 ---
@@ -297,7 +300,7 @@ curl -X GET http://127.0.0.1:8080/supported
 
 ```json
 {
-  "dbtype": [ "group_replication", "pxc" ],
+  "dbtype": [ "async", "group_replication", "pxc" ],
   "dimension": [
     { "id": 1, "name": "XSmall", "cpu": 1000, "memory": 2 },
     ...
@@ -651,8 +654,10 @@ All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The 
 |:---|:---:|:---|
 | `InnoDBPctValuePXC` | `0.80` | Maximum fraction of MySQL memory that may be given to InnoDB buffer pool in PXC. Galera GCache is stable and small, so a higher ceiling is safe. |
 | `InnoDBPctValueGR` | `0.70` | Same ceiling for Group Replication. GR's certification cache can spike during long writes; a lower ceiling prevents OOM kills. |
+| `InnoDBPctValueAsync` | `0.82` | Ceiling for async replication. No cluster caches compete for memory, so a slightly higher ceiling is safe — kept conservative so a replica node is safe while applying relay logs. |
 | `MinLimitPXC` | `0.50` | Used in two ways: (1) hard floor — buffer pool will not shrink below 50% of MySQL-allocated memory; (2) response evaluation threshold — `OverutilizingI` is returned if the buffer pool falls below 50% of total dimension memory. |
 | `MinLimitGR` | `0.40` | Same dual role for Group Replication. Set lower than PXC because GR needs more headroom for certification and message caches. |
+| `MinLimitAsync` | `0.52` | Same dual role for async replication. Set higher than GR because no cluster caches compete, so a higher floor is achievable. |
 | `MemoryFreeMinimumLimit` | `0.02` | 2% of MySQL memory reserved and never allocated, as a safety margin for OS paging and allocator overhead. |
 
 ### Group Replication GCS cache
@@ -661,6 +666,17 @@ All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The 
 |:---|:---:|:---|
 | `GroupRepGCSCacheMemStructureCost` | `52428800` (50 MiB) | Fixed overhead for the GR message-cache data structure, deducted from MySQL memory before buffer pool sizing. Separate from the per-connection cost. |
 | `GCSConnWeight` | `10` | Bytes per connection assumed for the GR message cache. Multiplied by `max_connections` to estimate total GCS memory demand. |
+
+### Binlog cache sizing (async only)
+
+Per-connection binlog cache size scales with write intensity. Monitor `Binlog_cache_use` and `Binlog_cache_disk_use` status variables; if disk use is non-zero, increase the value for your load type.
+
+| Constant | Value | Load type |
+|:---|:---:|:---|
+| `BinlogCacheSizeRead` | `32768` (32 KiB) | Mostly reads — transactions are small and infrequent |
+| `BinlogCacheSizeLightWrite` | `131072` (128 KiB) | Light OLTP — moderate transaction sizes |
+| `BinlogCacheSizeHeavyOLTP` | `262144` (256 KiB) | Heavy OLTP — mixed large transactions |
+| `BinlogCacheSizeHeavyWrite` | `524288` (512 KiB) | Bulk writes — large batches that must not spill to disk |
 
 ### GCache footprint factors (PXC only)
 
@@ -770,13 +786,15 @@ The result is written to both `innodb_redo_log_capacity` (MySQL 8.0.31+) and the
 ### Phase 3 — Buffer Pool (First Pass)
 
 ```
-bufferPool     = memoryLeftover × InnoDBPctValue   (0.80 PXC / 0.70 GR)
+bufferPool     = memoryLeftover × InnoDBPctValue   (0.80 PXC / 0.70 GR / 0.82 async)
 memoryLeftover -= bufferPool
 ```
 
 After this step `memoryLeftover` holds only the non-InnoDB portion — approximately 20–30% of MySQL memory — available for GCache, GCS, and other structures.
 
 ### Phase 4 — GCache / GCS Cache
+
+> **Async note:** this phase is skipped entirely for `dbtype = "async"`. There is no GCache or GCS structure, so the full `memoryLeftover` from Phase 3 remains available for the buffer pool recovery in Phase 7.
 
 **PXC only — GCache:**
 ```
@@ -818,6 +836,21 @@ The GCS cache is connection-driven: more connections relative to CPU means a pro
 
 **Group Replication parameters:**
 `loose_group_replication_member_expel_timeout` and `autorejoin_tries` are scaled up with `loadFactor` (busier nodes need more tolerance). `flow_control_period` scales inversely — lower on busy clusters. `communication_max_message_size` is reduced as dimension size increases (larger instances serve more concurrent transactions, so smaller messages reduce head-of-line blocking).
+
+**Async replication parameters (`configuration_async` group):**
+
+| Parameter | Tuning logic |
+|:---|:---|
+| `binlog_format` | Always `ROW` — required for GTID-based replication and downstream consumers. |
+| `binlog_row_image` | `MINIMAL` for mostly-reads; `FULL` for all write-bearing loads (safe for conflict detection and downstream GR consumers). |
+| `binlog_expire_logs_seconds` | `604800` (7 days) for read/light-write loads; `432000` (5 days) for heavy OLTP; `259200` (3 days) for heavy writes, to bound disk usage. |
+| `gtid_mode` | Always `ON` — enables crash-safe, position-independent failover. |
+| `enforce_gtid_consistency` | Always `ON` — rejects statements that cannot be logged safely in GTID mode. |
+| `innodb_flush_log_at_trx_commit` | Forced to `1` — any node may be promoted to source, so full ACID durability is required. |
+| `sync_relay_log` | Default (`10000`) on read/light-write loads; halved on heavy OLTP; reduced to one-third on heavy writes for crash-safety vs. throughput balance. |
+| `replica_net_timeout` | Base 60 s, scaled up with `loadFactor`: `ceil(60 × (1 + loadFactor))`. |
+| `replica_checkpoint_period` | Base 300 ms; reduced to 80% for heavy OLTP and 70% for heavy writes so the SQL thread checkpoints more frequently under sustained load. |
+| `relay_log_space_limit` | `0` (unlimited) by default; set explicitly in your deployment to bound relay log disk usage. |
 
 ### Phase 7 — Buffer Pool (Second Pass — Recovery or Shrinkage)
 
@@ -868,7 +901,7 @@ if bpPct < MinLimit + 0.10:   → ClosetolimitI
 else:                         → OkI
 ```
 
-`MinLimit` is `MinLimitPXC` (0.50) for PXC and `MinLimitGR` (0.40) for Group Replication. These thresholds are expressed as fractions of **total dimension memory** (not MySQL-allocated memory).
+`MinLimit` is `MinLimitPXC` (0.50) for PXC, `MinLimitGR` (0.40) for Group Replication, and `MinLimitAsync` (0.52) for async replication. These thresholds are expressed as fractions of **total dimension memory** (not MySQL-allocated memory).
 
 ### Outer Orchestration Loops
 
