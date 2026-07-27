@@ -69,6 +69,11 @@ const (
 
 	DbTypePXC              = "pxc"               // Percona XtraDB Cluster (Galera-based synchronous replication)
 	DbTypeGroupReplication = "group_replication" // MySQL Group Replication (InnoDB Cluster)
+	// DbTypeAsync is classic asynchronous source/replica replication. It is
+	// role-agnostic: the same configuration is valid whether the node currently
+	// acts as source or replica, because the Operator assigns and flips the role
+	// (and read_only/super_read_only) at runtime.
+	DbTypeAsync = "async"
 
 	// ---------------------------------------------------------------------------
 	// Output format strings — passed in the output field of the request.
@@ -90,6 +95,11 @@ const (
 	// cache can spike during long write transactions, so a lower ceiling reserves
 	// headroom to avoid OOM kills.
 	InnoDBPctValueGR = 0.70
+
+	// InnoDBPctValueAsync async has no certification cache / GCache / GCS
+	// structure, so more memory reaches InnoDB than GR. We keep the conservative
+	// (replica-safe) ceiling so a node is safe while applying relay logs.
+	InnoDBPctValueAsync = 0.82
 
 	// GroupRepGCSCacheMemStructureCost is a fixed 50 MiB reserved for the Group
 	// Replication message-cache data structure itself. It is deducted from MySQL
@@ -113,6 +123,10 @@ const (
 	// as the evaluation threshold. Set lower than PXC because GR needs more headroom
 	// for certification and message caches.
 	MinLimitGR = 0.40
+
+	// MinLimitAsync: BP floor for async — evaluation threshold as a fraction of
+	// total dimension memory. Higher than GR because no cluster caches compete.
+	MinLimitAsync = 0.52
 
 	// MemoryFreeMinimumLimit reserves 2% of total MySQL memory, never allocated to
 	// any structure, as a safety margin for allocator overhead and OS paging.
@@ -139,6 +153,36 @@ const (
 	// GCSConnWeight is the assumed per-connection cost in bytes for the GR message
 	// cache. Multiplied by max_connections to estimate total GCS memory demand.
 	GCSConnWeight = 10
+
+	// ---------------------------------------------------------------------------
+	// Asynchronous replication
+	// ---------------------------------------------------------------------------
+
+	// --- Async binlog cache size by load type (per connection) ---
+	// Check Binlog_cache_use and Binlog_cache_disk_use  for tuning
+	BinlogCacheSizeRead       = "32768"  //  32 KiB — mostly reads
+	BinlogCacheSizeLightWrite = "131072" // 128 KiB — light OLTP
+	BinlogCacheSizeHeavyOLTP  = "262144" // 256 KiB — heavy OLTP
+	BinlogCacheSizeHeavyWrite = "524288" // 512 KiB — bulk write
+
+	// ---------------------------------------------------------------------------
+	// Per connection buffers
+	// ---------------------------------------------------------------------------
+	JoinBufferSizeRead = "262144"
+	JoinBufferSizeLightWrite = "524288"
+	JoinBufferSizeHeavyOLTP = "1048576"
+	JoinBufferSizeHeavyWrite = "1048576"
+
+	ReadRndBufferSizeRead = "262144"
+	ReadRndBufferSizeLightWrite = "393216"
+	ReadRndBufferSizeHeavyOLTP = "707788"
+	ReadRndBufferSizeHeavyWrite = "707788"
+
+	SortBufferSizeRead = "262144"
+	SortBufferSizeLightWrite = "524288"
+	SortBufferSizeHeavyOLTP = "1572864"
+	SortBufferSizeHeavyWrite = "2097152"
+
 
 	// ---------------------------------------------------------------------------
 	// Auto-scale stepping increments (used when dimension.id = 998)
