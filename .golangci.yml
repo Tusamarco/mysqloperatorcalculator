@@ -1,0 +1,90 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck and unused are enabled by default.
+  enable:
+    - asasalint          # detect passing []any to variadic func(...any)
+    - asciicheck         # non-ASCII identifiers
+    - bidichk            # dangerous unicode bidi sequences
+    - bodyclose          # HTTP response bodies are closed
+    - copyloopvar        # loop-var copy no longer needed on Go 1.22+
+    - depguard           # forbid disallowed imports (see settings)
+    - durationcheck      # multiplying two durations
+    - errchkjson         # unhandled / unsupported json (un)marshal
+    - errorlint          # correct error wrapping / comparison
+    - exhaustive         # exhaustive enum switch statements
+    - forbidigo          # forbid leftover debug prints (see settings)
+    - gocheckcompilerdirectives # malformed //go: directives
+    - gocritic           # opinionated diagnostics
+    - gosec              # security issues
+    - intrange           # use Go 1.22 integer range where possible
+    - makezero           # make([]T, len) then append surprises
+    - misspell           # common misspellings
+    - nakedret           # naked returns in long functions
+    - nilerr             # returning nil after a non-nil err check
+    - nilnesserr         # nil error compared / returned incorrectly
+    - noctx              # http requests without context.Context
+    - perfsprint         # faster alternatives to fmt.Sprintf
+    - prealloc           # slices that can be preallocated
+    - predeclared        # shadowing predeclared identifiers
+    - reassign           # reassigning package-level variables
+    - recvcheck          # mixed value/pointer receivers
+    - revive             # golint successor
+    - unconvert          # unnecessary type conversions
+    - unparam            # unused function parameters / results
+    - usestdlibvars      # use stdlib constants (http.MethodGet, ...)
+    - wastedassign       # assignments never read
+    - whitespace         # leading/trailing whitespace in funcs
+
+  settings:
+    depguard:
+      rules:
+        everything:
+          deny:
+            - pkg: io/ioutil
+              desc: 'Deprecated since Go 1.16: use the "io" and "os" packages instead.'
+        not-tests:
+          files:
+            - '!$test'
+          deny:
+            - pkg: net/http/httptest
+              desc: Should be used only in tests.
+    errchkjson:
+      check-error-free-encoding: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: Use the logrus logger instead of leftover debug prints.
+    nakedret:
+      max-func-lines: 30
+
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # CLI help text and the standalone example legitimately write to stdout.
+      - linters:
+          - forbidigo
+        path: (src/help\.go|src/example/.*\.go)
+    paths:
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofumpt            # stricter gofmt
+    - gci                # deterministic import grouping
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/Tusamarco/mysqloperatorcalculator)
