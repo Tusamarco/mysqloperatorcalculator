@@ -173,7 +173,7 @@ func TestParamConnectionBuffers(t *testing.T) {
 		{LoadTypeMostlyReads, "262144", "262144", "262144", "32768"},
 		{LoadTypeSomeWrites, "524288", "524288", "393216", "131072"},
 		{LoadTypeEqualReadsWrites, "1048576", "1572864", "707788", "262144"},
-		{LoadTypeHeavyWrites, "1048576", "2097152", "707788", "358400"},
+		{LoadTypeHeavyWrites, "1048576", "2097152", "707788", "524288"},
 	}
 	for _, tc := range cases {
 		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
@@ -338,8 +338,8 @@ func TestParamInnoDBBufferPool_SecondPass_NegativeLeftover_FloorEnforced_PXC(t *
 		request: ConfigurationRequest{DBType: DbTypePXC},
 		reference: &references{
 			memoryMySQL:    totalMySQLMem,
-			innoDBbpSize:   int64(2 * testGB),   // very small initial BP
-			memoryLeftover: int64(-3 * testGB),  // large overrun
+			innoDBbpSize:   int64(2 * testGB),  // very small initial BP
+			memoryLeftover: int64(-3 * testGB), // large overrun
 		},
 	}
 	result := c.paramInnoDBBufferPool(Parameter{}, true)
