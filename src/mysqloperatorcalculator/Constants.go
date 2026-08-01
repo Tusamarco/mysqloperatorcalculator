@@ -2,7 +2,7 @@ package mysqloperatorcalculator
 
 const (
 	// VERSION is embedded in the --version CLI flag and in the /supported API response.
-	VERSION = "v1.20.1"
+	VERSION = "v1.21.0"
 
 	// ---------------------------------------------------------------------------
 	// Response message type codes — returned as message.type in every response.
@@ -168,21 +168,20 @@ const (
 	// ---------------------------------------------------------------------------
 	// Per connection buffers
 	// ---------------------------------------------------------------------------
-	JoinBufferSizeRead = "262144"
+	JoinBufferSizeRead       = "262144"
 	JoinBufferSizeLightWrite = "524288"
-	JoinBufferSizeHeavyOLTP = "1048576"
+	JoinBufferSizeHeavyOLTP  = "1048576"
 	JoinBufferSizeHeavyWrite = "1048576"
 
-	ReadRndBufferSizeRead = "262144"
+	ReadRndBufferSizeRead       = "262144"
 	ReadRndBufferSizeLightWrite = "393216"
-	ReadRndBufferSizeHeavyOLTP = "707788"
+	ReadRndBufferSizeHeavyOLTP  = "707788"
 	ReadRndBufferSizeHeavyWrite = "707788"
 
-	SortBufferSizeRead = "262144"
+	SortBufferSizeRead       = "262144"
 	SortBufferSizeLightWrite = "524288"
-	SortBufferSizeHeavyOLTP = "1572864"
+	SortBufferSizeHeavyOLTP  = "1572864"
 	SortBufferSizeHeavyWrite = "2097152"
-
 
 	// ---------------------------------------------------------------------------
 	// Auto-scale stepping increments (used when dimension.id = 998)
