@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+	MO "github.com/Tusamarco/mysqloperatorcalculator/pkg/mysqloperatorcalculator"
 )
 
 func main() {

@@ -125,7 +125,7 @@ Clone the repository and build the binary:
 ```bash
 git clone https://github.com/Tusamarco/mysqloperatorcalculator
 cd mysqloperatorcalculator
-go build -o mysqloperatorcalculator ./src
+go build -o mysqloperatorcalculator ./cmd/mysqloperatorcalculator
 ```
 
 ### Command‑Line Flags
@@ -173,7 +173,7 @@ The module is fully importable and exposes a clean API for direct integration in
 
 ### 1. Import the Module
 ```go
-import MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+import MO "github.com/Tusamarco/mysqloperatorcalculator/pkg/mysqloperatorcalculator"
 ```
 
 ### 2. Supported Layouts (Metadata)
@@ -197,7 +197,7 @@ import (
     "bytes"
     "fmt"
     "log"
-    MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+    MO "github.com/Tusamarco/mysqloperatorcalculator/pkg/mysqloperatorcalculator"
 )
 
 func main() {
@@ -266,7 +266,7 @@ func main() {
 
 > **💡 Pro Tip on Memory Parsing:** If you already know the bytes, you can skip `ConvertMemoryToBytes` and assign it directly: `myRequest.Dimension.MemoryBytes = 2684354560`.
 
-*For a ready-to-run file, view `src/example/example.go` in the GitHub repository.*
+*For a ready-to-run file, view `examples/example.go` in the GitHub repository.*
 
 ---
 
@@ -366,7 +366,7 @@ import (
     "encoding/json"
     "fmt"
     "log"
-    MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+    MO "github.com/Tusamarco/mysqloperatorcalculator/pkg/mysqloperatorcalculator"
 )
 
 // Retrieve supported layouts
@@ -476,7 +476,7 @@ myRequest.Dimension.MemoryBytes, err = myRequest.Dimension.ConvertMemoryToBytes(
 
 ```
 
-> **Note:** For a fully runnable working example, refer to `src/example/example.go` in the official repository.
+> **Note:** For a fully runnable working example, refer to `examples/example.go` in the official repository.
 
 ---
 
@@ -619,7 +619,7 @@ limit_memory = 268435456
 
 ## 🔧 Constants & Tuning Reference
 
-All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The table below documents every constant — what it controls, what it affects, and why it has its current value.
+All tuning knobs are defined in `pkg/mysqloperatorcalculator/constants.go`. The table below documents every constant — what it controls, what it affects, and why it has its current value.
 
 ### Response type codes
 

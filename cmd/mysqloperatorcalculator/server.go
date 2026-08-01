@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+	MO "github.com/Tusamarco/mysqloperatorcalculator/pkg/mysqloperatorcalculator"
 	log "github.com/sirupsen/logrus"
 
 	"net/http"
