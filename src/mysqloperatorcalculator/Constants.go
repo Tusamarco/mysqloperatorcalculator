@@ -142,6 +142,7 @@ const (
 	GcacheFootPrintFactorRead       = 0.5 // mostly reads: GCache is largely idle
 	GcacheFootPrintFactorLightWrite = 0.6 // light OLTP: moderate certification backlog
 	GcacheFootPrintFactorReadWrite  = 0.8 // equal reads/writes: heavier certification backlog
+
 	// Heavy-write workloads reuse the Read factor (0.5): many small transactions
 	// that certify quickly keep the resident portion of GCache small despite high
 	// write throughput.
@@ -152,8 +153,10 @@ const (
 
 	// GCSConnWeight is the assumed per-connection cost in bytes for the GR message
 	// cache. Multiplied by max_connections to estimate total GCS memory demand.
-	GCSConnWeight = 10
-
+	GCSConnWeight                    = 10
+	GCSCacheMemoryImpactPctBuferPool = 3.2 // GCS Impact on memory calculation, the simple subtraction of
+	// group_replication_message_cache_size is not enough to give enough space to the buffer also when performance
+	// schema reports less utilization. Given that we must calculate it as additional cost, like X time more the given value
 	// ---------------------------------------------------------------------------
 	// Asynchronous replication
 	// ---------------------------------------------------------------------------

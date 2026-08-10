@@ -594,7 +594,7 @@ func (c *Configurator) CalculateReturnBytes(incomingBytes int64) int64 {
 	MaxThreshold := int64(2 * Gigabyte)
 
 	MinPercent := 0.20 // 20% returned at or below MinThreshold
-	MaxPercent := 0.85 // 85% returned at or above MaxThreshold
+	MaxPercent := 0.80 // 80% returned at or above MaxThreshold
 
 	// 1. Handle the minimum threshold (300 MB or below → return 20%)
 	if incomingBytes <= MinThreshold {
@@ -886,18 +886,9 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Paramet
 	return parameter
 }
 
+// getGCScache adjusts the GCS message cache size based on system resources and parameters, returning the updated parameter.
 func (c *Configurator) getGCScache(parameter Parameter) Parameter {
-	/*
-		This calculation should be done against the running connections not against the load type
-		considering the cost of connection x how much of the group_replication_message_cache_size
-		we can use considering the maximum the default?
-	*/
-	// TODO: gcsFactor is currently unbounded. A high connection count relative to CPU
-	// (e.g. 200 connections on a 1-core node: gcsFactor = 200/100 = 2.0) can produce a
-	// GCS cache larger than available MySQL memory, pushing memoryLeftover deeply negative
-	// and collapsing the InnoDB buffer pool below MinLimitGR.
-	// Fix: cap gcsFactor at MaxGCSCacheFactor (e.g. 4.0) AND cap the result at
-	// memoryLeftover/3 to mirror the GCache guard in getGcache().
+
 	mem, _ := strconv.ParseFloat(parameter.Default, 64)
 
 	gcsFactor := float64(c.reference.connections) / float64(c.reference.cpus/GCSConnWeight)
@@ -914,7 +905,7 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 
 	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
 	c.reference.gcscache = c.reference.gcscacheFootprint
-	c.reference.memoryLeftover -= c.reference.gcscacheFootprint
+	c.reference.memoryLeftover -= int64(float64(c.reference.gcscacheFootprint) * GCSCacheMemoryImpactPctBuferPool)
 
 	return parameter
 }
