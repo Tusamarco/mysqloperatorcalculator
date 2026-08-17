@@ -47,7 +47,7 @@ func TestCalculateReturnBytes_AboveMaxThreshold(t *testing.T) {
 	c := &Configurator{reference: &references{}}
 	input := int64(2048 * testMB)
 	got := c.CalculateReturnBytes(input)
-	want := int64(float64(input) * 0.85)
+	want := int64(float64(input) * 0.80)
 	if got != want {
 		t.Errorf("CalculateReturnBytes(2048MB) = %d, want %d", got, want)
 	}
@@ -57,9 +57,9 @@ func TestCalculateReturnBytes_Interpolated(t *testing.T) {
 	c := &Configurator{reference: &references{}}
 	input := int64(1024 * testMB) // 1GB: midpoint between 300MB and 2GB thresholds
 	got := c.CalculateReturnBytes(input)
-	// Should be between 20% and 85%
+	// Should be between 20% and 80%
 	low := int64(float64(input) * 0.20)
-	high := int64(float64(input) * 0.85)
+	high := int64(float64(input) * 0.80)
 	if got < low || got > high {
 		t.Errorf("CalculateReturnBytes(1GB) = %d, want value in [%d, %d]", got, low, high)
 	}
