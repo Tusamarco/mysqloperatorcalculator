@@ -35,6 +35,7 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 	var err error
 
 	myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
+	myRequest.MySQLDedicated = true
 
 	// Setting the dimension using literal values
 	myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
@@ -46,8 +47,8 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
 		log.Fatalf("Memory conversion error: %v\n", err)
 	}
 
-	myRequest.DBType = MO.DbTypeGroupReplication  // "pxc" or "group_replication"
-	myRequest.Output = MO.ResultOutputFormatHuman // "human" or "json"
+	myRequest.DBType = MO.DbTypeGroupReplication // "pxc" or "group_replication"
+	myRequest.Output = MO.ResultOutputFormatJson // "human" or "json"
 	myRequest.Connections = 3000
 	myRequest.Mysqlversion = MO.Version{Major: 8, Minor: 4, Patch: 8}
 	myRequest.ProviderCostPct = 0.12

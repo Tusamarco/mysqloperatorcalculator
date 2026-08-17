@@ -42,11 +42,42 @@ All parameters are passed as a JSON payload to the `/calculator` endpoint or via
 | `mysqlversion.minor` | `int` | **Yes** | MySQL minor version (`0` … `4`) |
 | `mysqlversion.patch` | `int` | **Yes** | Patch version |
 | `providercostpct` | `float` | No | Platform overhead (e.g., `0.15` = 15%). Default `0`. |
+| `mysqldedicated` | `bool` | No | When `true`, the calculator runs in **MySQL Dedicated** mode (see below). Default `false`. |
 
 > **💡 Important Notes:**
 > - Connection values below **50** are automatically raised to `50`.
 > - If `connections` is set to `0`, the calculator iteratively increments the connection count until resources become saturated, returning the highest viable value.
 > - If `dimension.id` is set to `998`, the request is **connection‑driven**. The calculator will automatically pick the smallest pre‑defined dimension that can comfortably handle the requested connection count.
+
+---
+
+## 🖥️ MySQL Dedicated Mode
+
+Setting `mysqldedicated: true` tells the calculator that **MySQL is the only workload on the node** — there is no HAProxy sidecar and no PMM monitoring container. This has three effects:
+
+1. **Full resource allocation to MySQL.** In an open-dimension request (`dimension.id = 999`), 100% of the specified CPU and memory are assigned directly to the MySQL container instead of being split between MySQL, proxy, and monitor.
+2. **Proxy and monitor are not calculated.** The `getProbesAndResources` calls for `FamilyTypeProxy` and `FamilyTypeMonitor` are skipped entirely.
+3. **Proxy and monitor families are absent from the response.** The `proxy` and `monitor` keys are removed from the `answer` block, so only `mysql` is returned.
+
+> **When to use it:** standalone MySQL instances, single-container deployments, or scenarios where ProxySQL / HAProxy and PMM run on separate nodes or are not used at all.
+
+**HTTP example:**
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{
+  "output": "json",
+  "dbtype": "group_replication",
+  "dimension": { "id": 999, "cpu": 8000, "memory": "16G" },
+  "loadtype": { "id": 2 },
+  "connections": 500,
+  "mysqlversion": { "major": 8, "minor": 4, "patch": 8 },
+  "mysqldedicated": true
+}' http://127.0.0.1:8080/calculator
+```
+
+**Go module example:**
+```go
+myRequest.MySQLDedicated = true
+```
 
 ---
 
@@ -666,6 +697,7 @@ All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The 
 |:---|:---:|:---|
 | `GroupRepGCSCacheMemStructureCost` | `52428800` (50 MiB) | Fixed overhead for the GR message-cache data structure, deducted from MySQL memory before buffer pool sizing. Separate from the per-connection cost. |
 | `GCSConnWeight` | `10` | Bytes per connection assumed for the GR message cache. Multiplied by `max_connections` to estimate total GCS memory demand. |
+| `GCSCacheMemoryImpactPctBuferPool` | `3.2` | Multiplier applied to the calculated GCS cache footprint before it is deducted from `memoryLeftover`. A plain subtraction of `group_replication_message_cache_size` understates the true buffer pool pressure because the Performance Schema reports lower utilization than the actual resident set. Multiplying by 3.2 reserves additional headroom so the InnoDB buffer pool remains stable even when GCS memory usage spikes above what the PS reports. |
 
 ### Binlog cache sizing (async only)
 
@@ -866,7 +898,7 @@ if memoryLeftover < 0:
     bufferPool  = max(bufferPool, memoryMySQL × MinLimit)  # enforce floor
 ```
 
-`CalculateReturnBytes` interpolates the recovery fraction linearly between 20% (≤ 300 MiB leftover — cautious, preserve the margin) and 85% (≥ 2 GiB leftover — large surplus, return most of it to InnoDB).
+`CalculateReturnBytes` interpolates the recovery fraction linearly between 20% (≤ 300 MiB leftover — cautious, preserve the margin) and 80% (≥ 2 GiB leftover — large surplus, return most of it to InnoDB). The ceiling was lowered from 85% to 80% to leave a slightly larger unconditional safety margin for allocator and OS overhead on large instances.
 
 ### Phase 8 — Kubernetes Resources and Probes
 
