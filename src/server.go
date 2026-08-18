@@ -235,6 +235,7 @@ func ReturnResponse(writer http.ResponseWriter, request *http.Request, ConfReque
 	var b bytes.Buffer
 	var err error
 	var moc MO.MysqlOperatorCalculator
+
 	if ConfRequest.Output == "json" {
 		b, err = moc.GetJSONOutput(message, ConfRequest, families)
 	} else {

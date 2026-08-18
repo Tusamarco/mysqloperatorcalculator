@@ -21,6 +21,7 @@ type MysqlOperatorCalculator struct {
 func (moc *MysqlOperatorCalculator) Init(inR ConfigurationRequest, conf Configuration) ConfigurationRequest {
 	moc.IncomingRequest = inR
 	moc.Conf = conf
+	moc.Conf.MySQLDedicated = inR.MySQLDedicated
 	if moc.IncomingRequest.ProviderCostPct > 0 {
 		moc.adjustResourcesByProvider()
 	}
@@ -106,6 +107,12 @@ func (moc *MysqlOperatorCalculator) GetCalculate() (error, ResponseMessage, map[
 		message.MText += fmt.Sprintf("\n!!!! Connections recalculated Original: %d New Value %d plus additional 2 for administrative use !!!\n\n", originalConnections, moc.IncomingRequest.Connections)
 		message.MName = message.GetMessageText(ConnectionRecalculated)
 		message.MType = ConnectionRecalculated
+	}
+
+	// If we are in MySQL dedicated instance then remove proxy and monitor
+	if moc.IncomingRequest.MySQLDedicated {
+		delete(Families, FamilyTypeProxy)
+		delete(Families, FamilyTypeMonitor)
 	}
 
 	return calcErr, message, Families

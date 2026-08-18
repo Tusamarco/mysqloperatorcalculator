@@ -53,6 +53,7 @@ type Configuration struct {
 	Output          []string      `json:"output"`
 	Mysqlversions   MySQLVersions `json:"mysqlversions"`
 	ProviderCostPct float64       `json:"providercostpct"`
+	MySQLDedicated  bool          `json:"mysqldedicated"`
 }
 
 type ConfigurationRequest struct {
@@ -63,6 +64,7 @@ type ConfigurationRequest struct {
 	Output          string    `json:"output"`
 	Mysqlversion    Version   `json:"mysqlversion"`
 	ProviderCostPct float64   `json:"providercostpct"`
+	MySQLDedicated  bool      `json:"mysqldedicated"`
 }
 
 type Dimension struct {
@@ -469,6 +471,13 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 		calcDimension := conf.getDimensionForFreeCalculation(dimension)
 
 		// Calculate ratios
+		if conf.MySQLDedicated {
+			dimension.MysqlMemory = dimension.MemoryBytes * 1
+			dimension.MysqlCpu = int(float64(dimension.Cpu) * 1)
+
+			return dimension
+
+		}
 		ratioMysqlCpu := float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu)
 		ratioProxyCpu := float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu)
 		ratioPmmCpu := float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu)

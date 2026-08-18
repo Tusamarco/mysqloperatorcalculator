@@ -196,8 +196,11 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 		c.getInnodbBufferPool(true)
 
 		c.getProbesAndResources(FamilyTypeMysql)
-		c.getProbesAndResources(FamilyTypeProxy)
-		c.getProbesAndResources(FamilyTypeMonitor)
+		// If we are not in a MySQL dedicate server then calculate all
+		if !c.request.MySQLDedicated {
+			c.getProbesAndResources(FamilyTypeProxy)
+			c.getProbesAndResources(FamilyTypeMonitor)
+		}
 	}
 
 	return c.filterByMySQLVersion()
@@ -829,6 +832,10 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	fmt.Fprintf(&b, "\n\nTot Memory Bytes    = %.0f\n", c.reference.memory)
 	fmt.Fprintf(&b, "Tot CPU                 = %d\n", c.reference.cpus)
 	fmt.Fprintf(&b, "Tot Connections         = %d\n\n", c.reference.connections)
+
+	if c.request.MySQLDedicated {
+		fmt.Fprintf(&b, "MySQL Dedicated Instance activated  \n")
+	}
 
 	fmt.Fprintf(&b, "memory assign to mysql Bytes   = %.0f\n", c.reference.memoryMySQL)
 	fmt.Fprintf(&b, "memory assign to Proxy Bytes   = %.0f\n", c.reference.memoryProxy)
