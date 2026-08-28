@@ -665,12 +665,12 @@ All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The 
 
 ### Load type IDs
 
-| Constant | Value | Workload profile | Typical use case |
-|:---|:---:|:---|:---|
-| `LoadTypeMostlyReads` | `1` | ~95% reads, ~5% writes | Blogs, reporting, read replicas |
-| `LoadTypeSomeWrites` | `2` | ~80% reads, ~20% writes | E-commerce, light OLTP |
-| `LoadTypeEqualReadsWrites` | `3` | ~50/50 | Mixed analytics, heavy OLTP |
-| `LoadTypeHeavyWrites` | `4` | Write-dominated | Log ingestion, event streams |
+| Constant | Value | Workload profile        | Typical use case                     |
+|:---|:---:|:------------------------|:-------------------------------------|
+| `LoadTypeMostlyReads` | `1` | ~90% reads, ~10% writes | Blogs, reporting, read replicas      |
+| `LoadTypeSomeWrites` | `2` | Up to ~40% writes       | E-commerce, light OLTP               |
+| `LoadTypeEqualReadsWrites` | `3` | ~30/70                  | Intense analytics, telephony, gaming.|
+| `LoadTypeHeavyWrites` | `4` | Write-dominated         | Log ingestion, event streams         |
 
 ### Special dimension IDs
 
