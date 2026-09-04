@@ -795,6 +795,7 @@ func (c *Configurator) getProbesAndResources(family string) {
 	c.families[family].Groups["readinessProbe"] = group
 
 	group = c.families[family].Groups["livenessProbe"]
+	parameter = group.Parameters["timeoutSeconds"]
 	val = int(math.Ceil(float64(parameter.Max) * float64(c.reference.loadFactor)))
 	if val < 1 {
 		val = int(parameter.Min)
