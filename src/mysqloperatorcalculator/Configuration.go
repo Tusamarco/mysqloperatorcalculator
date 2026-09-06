@@ -19,7 +19,7 @@ var MySQLMaxSupported = Version{11, 1, 1}
 
 // Boundary points where behaviour changed
 var V8_0_46 = Version{8, 0, 46}
-var V8_4_1 = Version{8, 4, 1}
+var V9_0_0 = Version{9, 0, 0}
 var V11_1_1 = Version{11, 1, 1}
 
 //********************************
@@ -193,7 +193,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 	replicaGroup := map[string]Parameter{
 		"replica_compressed_protocol":   {"replica_compressed_protocol", "configuration", "replication", "1", "1", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
 		"replica_exec_mode":             {"replica_exec_mode", "configuration", "replication", "STRICT", "STRICT", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
-		"replica_parallel_type":         {"replica_parallel_type", "configuration", "replication", "LOGICAL_CLOCK", "LOGICAL_CLOCK", 0, 0, MySQLVersions{V8_0_46, V11_1_1}},
+		"replica_parallel_type":         {"replica_parallel_type", "configuration", "replication", "LOGICAL_CLOCK", "LOGICAL_CLOCK", 0, 0, MySQLVersions{V8_0_46, V9_0_0}},
 		"replica_parallel_workers":      {"replica_parallel_workers", "configuration", "replication", "4", "4", 0, 1024, MySQLVersions{V8_0_46, V11_1_1}},
 		"replica_preserve_commit_order": {"replica_preserve_commit_order", "configuration", "replication", "ON", "ON", 0, 1, MySQLVersions{V8_0_46, V11_1_1}},
 	}
