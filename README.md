@@ -204,7 +204,7 @@ The module is fully importable and exposes a clean API for direct integration in
 
 ### 1. Import the Module
 ```go
-import "github.com/Tusamarco/mysqloperatorcalculator/calculator"
+import "github.com/Tusamarco/mysqloperatorcalculator/v2/calculator"
 ```
 
 ### 2. Supported Layouts (Metadata)
@@ -228,7 +228,7 @@ import (
     "bytes"
     "fmt"
     "log"
-    "github.com/Tusamarco/mysqloperatorcalculator/calculator"
+    "github.com/Tusamarco/mysqloperatorcalculator/v2/calculator"
 )
 
 func main() {
@@ -397,7 +397,7 @@ import (
     "encoding/json"
     "fmt"
     "log"
-    "github.com/Tusamarco/mysqloperatorcalculator/calculator"
+    "github.com/Tusamarco/mysqloperatorcalculator/v2/calculator"
 )
 
 // Retrieve supported layouts
