@@ -1,4 +1,4 @@
-package mysqloperatorcalculator
+package calculator
 
 import (
 	"bytes"

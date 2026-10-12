@@ -1,4 +1,4 @@
-package mysqloperatorcalculator
+package calculator
 
 const (
 	// VERSION is embedded in the --version CLI flag and in the /supported API response.
