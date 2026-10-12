@@ -21,16 +21,16 @@ func TestGetDimensionByID_Valid(t *testing.T) {
 	}
 	for _, tc := range cases {
 		dim := conf.GetDimensionByID(tc.id)
-		if dim.Id != tc.id {
-			t.Errorf("GetDimensionByID(%d).Id = %d, want %d", tc.id, dim.Id, tc.id)
+		if dim.ID != tc.id {
+			t.Errorf("GetDimensionByID(%d).Id = %d, want %d", tc.id, dim.ID, tc.id)
 		}
 		if dim.Cpu != tc.wantCPU {
 			t.Errorf("GetDimensionByID(%d).Cpu = %d, want %d", tc.id, dim.Cpu, tc.wantCPU)
 		}
-		if dim.MysqlCpu == 0 {
+		if dim.MySQLCPU == 0 {
 			t.Errorf("GetDimensionByID(%d).MysqlCpu not set", tc.id)
 		}
-		if dim.MysqlMemory == 0 {
+		if dim.MySQLMemory == 0 {
 			t.Errorf("GetDimensionByID(%d).MysqlMemory not set", tc.id)
 		}
 	}
@@ -40,8 +40,8 @@ func TestGetDimensionByID_Invalid(t *testing.T) {
 	var conf Configuration
 	conf.Init()
 	dim := conf.GetDimensionByID(99999)
-	if dim.Id != 0 {
-		t.Errorf("expected zero Dimension for unknown ID, got Id=%d", dim.Id)
+	if dim.ID != 0 {
+		t.Errorf("expected zero Dimension for unknown ID, got Id=%d", dim.ID)
 	}
 }
 
@@ -51,17 +51,17 @@ func TestGetDimensionByID_ResourceSplit(t *testing.T) {
 	// Each component must be positive and the sum must not exceed the total CPU.
 	// Some dimensions intentionally reserve a portion of CPU as node overhead.
 	for _, dim := range conf.Dimension {
-		if dim.Id == DimensionOpen || dim.Id == ConnectionDimension {
+		if dim.ID == DimensionOpen || dim.ID == ConnectionDimension {
 			continue
 		}
-		total := dim.MysqlCpu + dim.ProxyCpu + dim.PmmCpu
+		total := dim.MySQLCPU + dim.ProxyCPU + dim.PMMCPU
 		if total > dim.Cpu {
 			t.Errorf("dim %d (%s): CPU split %d+%d+%d=%d exceeds total %d",
-				dim.Id, dim.Name, dim.MysqlCpu, dim.ProxyCpu, dim.PmmCpu, total, dim.Cpu)
+				dim.ID, dim.Name, dim.MySQLCPU, dim.ProxyCPU, dim.PMMCPU, total, dim.Cpu)
 		}
-		if dim.MysqlCpu <= 0 || dim.ProxyCpu <= 0 || dim.PmmCpu <= 0 {
+		if dim.MySQLCPU <= 0 || dim.ProxyCPU <= 0 || dim.PMMCPU <= 0 {
 			t.Errorf("dim %d (%s): all CPU components must be > 0, got MySQL=%d Proxy=%d PMM=%d",
-				dim.Id, dim.Name, dim.MysqlCpu, dim.ProxyCpu, dim.PmmCpu)
+				dim.ID, dim.Name, dim.MySQLCPU, dim.ProxyCPU, dim.PMMCPU)
 		}
 	}
 }
@@ -70,14 +70,14 @@ func TestGetDimensionByID_MemoryBytes(t *testing.T) {
 	var conf Configuration
 	conf.Init()
 	for _, dim := range conf.Dimension {
-		if dim.Id == DimensionOpen || dim.Id == ConnectionDimension {
+		if dim.ID == DimensionOpen || dim.ID == ConnectionDimension {
 			continue
 		}
 		if dim.MemoryBytes == 0 {
-			t.Errorf("dim %d (%s): MemoryBytes is 0", dim.Id, dim.Name)
+			t.Errorf("dim %d (%s): MemoryBytes is 0", dim.ID, dim.Name)
 		}
-		if dim.MysqlMemory == 0 {
-			t.Errorf("dim %d (%s): MysqlMemory is 0", dim.Id, dim.Name)
+		if dim.MySQLMemory == 0 {
+			t.Errorf("dim %d (%s): MysqlMemory is 0", dim.ID, dim.Name)
 		}
 	}
 }
@@ -91,8 +91,8 @@ func TestGetLoadByID_Valid(t *testing.T) {
 	conf.Init()
 	for _, id := range []int{LoadTypeMostlyReads, LoadTypeSomeWrites, LoadTypeEqualReadsWrites, LoadTypeHeavyWrites} {
 		load := conf.GetLoadByID(id)
-		if load.Id != id {
-			t.Errorf("GetLoadByID(%d) returned Id=%d", id, load.Id)
+		if load.ID != id {
+			t.Errorf("GetLoadByID(%d) returned Id=%d", id, load.ID)
 		}
 		if load.Name == "" {
 			t.Errorf("GetLoadByID(%d) has empty Name", id)
@@ -104,8 +104,8 @@ func TestGetLoadByID_Invalid(t *testing.T) {
 	var conf Configuration
 	conf.Init()
 	load := conf.GetLoadByID(9999)
-	if load.Id != 0 {
-		t.Errorf("expected zero LoadType for unknown ID, got Id=%d", load.Id)
+	if load.ID != 0 {
+		t.Errorf("expected zero LoadType for unknown ID, got Id=%d", load.ID)
 	}
 }
 

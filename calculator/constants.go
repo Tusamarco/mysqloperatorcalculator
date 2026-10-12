@@ -54,7 +54,7 @@ const (
 	// Family and group name keys — used to address sections of the response map.
 	// ---------------------------------------------------------------------------
 
-	FamilyTypeMysql   = "mysql"   // MySQL container configuration family
+	FamilyTypeMySQL   = "mysql"   // MySQL container configuration family
 	FamilyTypeProxy   = "proxy"   // HAProxy sidecar configuration family
 	FamilyTypeMonitor = "monitor" // PMM monitoring sidecar configuration family
 
@@ -67,19 +67,19 @@ const (
 	// Database type strings — passed in the dbtype field of the request.
 	// ---------------------------------------------------------------------------
 
-	DbTypePXC              = "pxc"               // Percona XtraDB Cluster (Galera-based synchronous replication)
-	DbTypeGroupReplication = "group_replication" // MySQL Group Replication (InnoDB Cluster)
-	// DbTypeAsync is classic asynchronous source/replica replication. It is
+	DBTypePXC              = "pxc"               // Percona XtraDB Cluster (Galera-based synchronous replication)
+	DBTypeGroupReplication = "group_replication" // MySQL Group Replication (InnoDB Cluster)
+	// DBTypeAsync is classic asynchronous source/replica replication. It is
 	// role-agnostic: the same configuration is valid whether the node currently
 	// acts as source or replica, because the Operator assigns and flips the role
 	// (and read_only/super_read_only) at runtime.
-	DbTypeAsync = "async"
+	DBTypeAsync = "async"
 
 	// ---------------------------------------------------------------------------
 	// Output format strings — passed in the output field of the request.
 	// ---------------------------------------------------------------------------
 
-	ResultOutputFormatJson  = "json"  // structured JSON — suitable for automation and Operators
+	ResultOutputFormatJSON  = "json"  // structured JSON — suitable for automation and Operators
 	ResultOutputFormatHuman = "human" // INI-style flat text — suitable for my.cnf or manual review
 
 	// ---------------------------------------------------------------------------
@@ -139,9 +139,9 @@ const (
 	// of the cache actually resident in RAM.
 	// ---------------------------------------------------------------------------
 
-	GcacheFootPrintFactorRead       = 0.5 // mostly reads: GCache is largely idle
-	GcacheFootPrintFactorLightWrite = 0.6 // light OLTP: moderate certification backlog
-	GcacheFootPrintFactorReadWrite  = 0.8 // equal reads/writes: heavier certification backlog
+	GCacheFootprintFactorRead       = 0.5 // mostly reads: GCache is largely idle
+	GCacheFootprintFactorLightWrite = 0.6 // light OLTP: moderate certification backlog
+	GCacheFootprintFactorReadWrite  = 0.8 // equal reads/writes: heavier certification backlog
 
 	// Heavy-write workloads reuse the Read factor (0.5): many small transactions
 	// that certify quickly keep the resident portion of GCache small despite high
@@ -153,8 +153,8 @@ const (
 
 	// GCSConnWeight is the assumed per-connection cost in bytes for the GR message
 	// cache. Multiplied by max_connections to estimate total GCS memory demand.
-	GCSConnWeight                    = 10
-	GCSCacheMemoryImpactPctBuferPool = 3.2 // GCS Impact on memory calculation, the simple subtraction of
+	GCSConnWeight                     = 10
+	GCSCacheMemoryImpactPctBufferPool = 3.2 // GCS Impact on memory calculation, the simple subtraction of
 	// group_replication_message_cache_size is not enough to give enough space to the buffer also when performance
 	// schema reports less utilization. Given that we must calculate it as additional cost, like X time more the given value
 	// ---------------------------------------------------------------------------
@@ -201,19 +201,19 @@ const (
 	// Exceeding this ratio returns OverutilizingI; approaching it returns ClosetolimitI.
 	// ---------------------------------------------------------------------------
 
-	CpuConncetionMillFactorRead           = 0.8 // mostly reads: low write overhead
-	CpuConncetionMillFactorReadWriteLight = 1.2 // light OLTP: binlog + replication add up
-	CpuConncetionMillFactorReadWriteEqual = 1.6 // equal reads/writes: lock contention overhead
-	CpuConncetionMillFactorReadWriteHeavy = 2   // heavy writes: maximum CPU demand per connection
+	CPUConnectionMillFactorRead           = 0.8 // mostly reads: low write overhead
+	CPUConnectionMillFactorReadWriteLight = 1.2 // light OLTP: binlog + replication add up
+	CPUConnectionMillFactorReadWriteEqual = 1.6 // equal reads/writes: lock contention overhead
+	CPUConnectionMillFactorReadWriteHeavy = 2   // heavy writes: maximum CPU demand per connection
 
 	// ---------------------------------------------------------------------------
 	// Connection thresholds
 	// ---------------------------------------------------------------------------
 
-	// ConnectionWeighPctLimit: when the memory cost of all connection buffers exceeds
+	// ConnectionWeightPctLimit: when the memory cost of all connection buffers exceeds
 	// this fraction of available MySQL memory, the response is flagged ClosetolimitI
 	// and InnoDB/redo-log sizing is skipped.
-	ConnectionWeighPctLimit = 0.50
+	ConnectionWeightPctLimit = 0.50
 
 	// MinConnectionNumber is the hard floor applied to every request. Values below
 	// this (including 0) are silently raised before the calculation begins.

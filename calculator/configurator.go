@@ -21,33 +21,33 @@ type Configurator struct {
 
 // references structure keeps information needed while calculating parameters
 type references struct {
-	memory           float64 // total memory available
-	cpus             int     // total cpus
-	gcache           int64   // assigned gcache dimension
-	gcacheFootprint  int64   // expected file footprint in memory
-	gcacheLoad       float64 // gcache load adj factor base on type of load
-	memoryLeftover   int64   // memory free after all calculation
-	innodbRedoLogDim int64   // total redolog dimension
-	innoDBbpSize     int64   // Calculated BP to apply
+	memory              float64 // total memory available
+	cpus                int     // total cpus
+	gcache              int64   // assigned gcache dimension
+	gcacheFootprint     int64   // expected file footprint in memory
+	gcacheLoad          float64 // gcache load adj factor base on type of load
+	memoryLeftover      int64   // memory free after all calculation
+	innoDBRedoLogDim    int64   // total redolog dimension
+	innoDBBPSize        int64   // Calculated BP to apply
 	//loadAdjustment     float32 // load adjustment indicator based on CPU weight against connections
-	loadAdjustmentMax  float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=MinConnectionNumber
-	loadFactor         float32 // Load factor for calculation based on loadAdjustment
-	loadID             int     // loadID coming from request
-	dimension          int     // Dimension Id coming from request
-	connections        int     // raw number of connections
-	tmpTableFootprint  int64   // tempTable expected footprint in memory
-	connBuffersMemTot  int64   // Total mem use for all connection buffers + temp table
-	idealBufferPoolDIm int64   // Theoretical ideal BP dimension (rule of the thumb)
-	innoDBBPInstances  int     // assigned number of BP
-	cpusPmm            float64 // cpu assigned to pmm
-	cpusProxy          float64 // cpu assigned to proxy
-	cpusMySQL          float64 // cpu assigned to mysql
-	memoryMySQL        float64 // memory assigned to MySQL
-	memoryProxy        float64 // memory assigned to proxy
-	memoryPmm          float64 // memory assigned to pmm
-	gcscache           int64   // assigned GR GCScache dimension
-	gcscacheFootprint  int64   // GR GCScache expected file footprint in memory
-	gcscacheLoad       float64 // // TODO make it dynamic as for PXC GCSCache. GR GCScache load adj factor base on memory available
+	loadAdjustmentMax   float64 // Upper limit given optimal condition between CPU resources and connections using as minimal connections=MinConnectionNumber
+	loadFactor          float32 // Load factor for calculation based on loadAdjustment
+	loadID              int     // loadID coming from request
+	dimension           int     // Dimension Id coming from request
+	connections         int     // raw number of connections
+	tmpTableFootprint   int64   // tempTable expected footprint in memory
+	connBuffersMemTotal int64   // Total mem use for all connection buffers + temp table
+	idealBufferPoolDim  int64   // Theoretical ideal BP dimension (rule of the thumb)
+	innoDBBPInstances   int     // assigned number of BP
+	cpusPMM             float64 // cpu assigned to pmm
+	cpusProxy           float64 // cpu assigned to proxy
+	cpusMySQL           float64 // cpu assigned to mysql
+	memoryMySQL         float64 // memory assigned to MySQL
+	memoryProxy         float64 // memory assigned to proxy
+	memoryPMM           float64 // memory assigned to pmm
+	gcsCache            int64   // assigned GR GCScache dimension
+	gcsCacheFootprint   int64   // GR GCScache expected file footprint in memory
+	gcsCacheLoad        float64 // // TODO make it dynamic as for PXC GCSCache. GR GCScache load adj factor base on memory available
 }
 
 // GetAllGaleraProviderOptionsAsString returns all provider options considered as a single string
@@ -77,17 +77,17 @@ func (c *Configurator) GetAllGaleraProviderOptionsAsString() bytes.Buffer {
 
 func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf Configuration, message ResponseMessage) (ResponseMessage, bool) {
 	var dim Dimension
-	if r.Dimension.Id != DimensionOpen && r.Dimension.Name != "scaled" {
-		dim = conf.GetDimensionByID(r.Dimension.Id)
+	if r.Dimension.ID != DimensionOpen && r.Dimension.Name != "scaled" {
+		dim = conf.GetDimensionByID(r.Dimension.ID)
 	} else {
 		dim = r.Dimension
 	}
 
 	c.request = r
 
-	load := conf.GetLoadByID(r.LoadType.Id)
-	if load.Id == 0 || dim.Id == 0 {
-		log.Warningf("Invalid load %d or Dimension %d detected", load.Id, dim.Id)
+	load := conf.GetLoadByID(r.LoadType.ID)
+	if load.ID == 0 || dim.ID == 0 {
+		log.Warningf("Invalid load %d or Dimension %d detected", load.ID, dim.ID)
 	}
 
 	connections := r.Connections
@@ -99,16 +99,16 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 		memory:       dim.MemoryBytes,
 		cpus:         dim.Cpu,
 		gcacheLoad:   1,
-		loadID:       load.Id,
-		dimension:    dim.Id,
+		loadID:       load.ID,
+		dimension:    dim.ID,
 		connections:  connections,
-		cpusPmm:      float64(dim.PmmCpu),
-		cpusProxy:    float64(dim.ProxyCpu),
-		cpusMySQL:    float64(dim.MysqlCpu),
-		memoryMySQL:  dim.MysqlMemory,
+		cpusPMM:      float64(dim.PMMCPU),
+		cpusProxy:    float64(dim.ProxyCPU),
+		cpusMySQL:    float64(dim.MySQLCPU),
+		memoryMySQL:  dim.MySQLMemory,
 		memoryProxy:  dim.ProxyMemory,
-		memoryPmm:    dim.PmmMemory,
-		gcscacheLoad: 1,
+		memoryPMM:    dim.PMMMemory,
+		gcsCacheLoad: 1,
 	}
 
 	loadConnectionFactor, responseMessage, done := c.calculateLoadConnectionFactor(dim, message)
@@ -118,14 +118,14 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 
 	c.reference.loadFactor = loadConnectionFactor
 	switch c.request.DBType {
-	case DbTypePXC:
-		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValuePXC)
-	case DbTypeAsync:
-		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValueAsync)
+	case DBTypePXC:
+		c.reference.idealBufferPoolDim = int64(c.reference.memoryMySQL * InnoDBPctValuePXC)
+	case DBTypeAsync:
+		c.reference.idealBufferPoolDim = int64(c.reference.memoryMySQL * InnoDBPctValueAsync)
 	default:
-		c.reference.idealBufferPoolDIm = int64(c.reference.memoryMySQL * InnoDBPctValueGR)
+		c.reference.idealBufferPoolDim = int64(c.reference.memoryMySQL * InnoDBPctValueGR)
 	}
-	c.reference.gcacheLoad = c.getGcacheLoad()
+	c.reference.gcacheLoad = c.getGCacheLoad()
 
 	var p ProviderParam
 	c.families = fam
@@ -135,26 +135,26 @@ func (c *Configurator) Init(r ConfigurationRequest, fam map[string]Family, conf 
 }
 
 func (c *Configurator) calculateLoadConnectionFactor(dim Dimension, message ResponseMessage) (float32, ResponseMessage, bool) {
-	CpuConncetionMillFactor := 0.0
+	cpuConnectionMillFactor := 0.0
 
 	switch c.reference.loadID {
 	case LoadTypeMostlyReads:
-		CpuConncetionMillFactor = CpuConncetionMillFactorRead
+		cpuConnectionMillFactor = CPUConnectionMillFactorRead
 	case LoadTypeSomeWrites:
-		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteLight
+		cpuConnectionMillFactor = CPUConnectionMillFactorReadWriteLight
 	case LoadTypeEqualReadsWrites:
-		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteEqual
+		cpuConnectionMillFactor = CPUConnectionMillFactorReadWriteEqual
 	case LoadTypeHeavyWrites:
-		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteHeavy
+		cpuConnectionMillFactor = CPUConnectionMillFactorReadWriteHeavy
 	default:
-		CpuConncetionMillFactor = CpuConncetionMillFactorReadWriteLight
+		cpuConnectionMillFactor = CPUConnectionMillFactorReadWriteLight
 	}
 
-	c.reference.loadAdjustmentMax = float64(dim.MysqlCpu) / CpuConncetionMillFactor
+	c.reference.loadAdjustmentMax = float64(dim.MySQLCPU) / cpuConnectionMillFactor
 	loadConnectionFactor := float32(c.reference.connections) / float32(c.reference.loadAdjustmentMax)
 
 	if loadConnectionFactor > 1 {
-		message.MType = OverutilizingI
+		message.Type = OverutilizingI
 		return 0, message, true
 	}
 	return loadConnectionFactor, ResponseMessage{}, false
@@ -163,16 +163,16 @@ func (c *Configurator) calculateLoadConnectionFactor(dim Dimension, message Resp
 func (c *Configurator) ProcessRequest() map[string]Family {
 	c.getConnectionBuffers()
 
-	conWeight := float64(c.reference.connBuffersMemTot) / c.reference.memoryMySQL
-	if conWeight < ConnectionWeighPctLimit {
-		c.getInnodbRedolog()
-		c.getInnodbBufferPool(false)
+	conWeight := float64(c.reference.connBuffersMemTotal) / c.reference.memoryMySQL
+	if conWeight < ConnectionWeightPctLimit {
+		c.getInnoDBRedoLog()
+		c.getInnoDBBufferPool(false)
 
 		if c.request.DBType == "pxc" {
-			c.getGcache()
+			c.getGCache()
 		}
 
-		c.getInnodbParameters()
+		c.getInnoDBParameters()
 		c.getServerParameters()
 		c.getReplicationParameters()
 
@@ -184,18 +184,18 @@ func (c *Configurator) ProcessRequest() map[string]Family {
 			c.getGroupReplicationParameters()
 
 			group := c.families["mysql"].Groups["configuration_groupReplication"]
-			group.Parameters["loose_group_replication_message_cache_size"] = c.getGCScache(group.Parameters["loose_group_replication_message_cache_size"])
+			group.Parameters["loose_group_replication_message_cache_size"] = c.getGCSCache(group.Parameters["loose_group_replication_message_cache_size"])
 			c.families["mysql"].Groups["configuration_groupReplication"] = group
 		}
 
-		if c.request.DBType == DbTypeAsync {
+		if c.request.DBType == DBTypeAsync {
 			c.getAsyncParameters()
 		}
 
 		// Before returning the values we want tore recover any left over from the memory and assign back to the buffer pool by a %
-		c.getInnodbBufferPool(true)
+		c.getInnoDBBufferPool(true)
 
-		c.getProbesAndResources(FamilyTypeMysql)
+		c.getProbesAndResources(FamilyTypeMySQL)
 		// If we are not in a MySQL dedicate server then calculate all
 		if !c.request.MySQLDedicated {
 			c.getProbesAndResources(FamilyTypeProxy)
@@ -271,15 +271,15 @@ func (c *Configurator) getAsyncParameters() {
 }
 
 func (c *Configurator) filterByMySQLVersion() map[string]Family {
-	incomingVStr := fmt.Sprintf("%d.%d.%d", c.request.Mysqlversion.Major, c.request.Mysqlversion.Minor, c.request.Mysqlversion.Patch)
+	incomingVStr := fmt.Sprintf("%d.%d.%d", c.request.MySQLVersion.Major, c.request.MySQLVersion.Minor, c.request.MySQLVersion.Patch)
 	incomingV, _ := version.NewVersion(incomingVStr)
 
 	for _, l1Val := range c.families {
 		for _, l2Val := range l1Val.Groups {
 			for l3Key, l3Val := range l2Val.Parameters {
-				if l3Val.Mysqlversions.Min.Major > 0 {
-					minStr := fmt.Sprintf("%d.%d.%d", l3Val.Mysqlversions.Min.Major, l3Val.Mysqlversions.Min.Minor, l3Val.Mysqlversions.Min.Patch)
-					maxStr := fmt.Sprintf("%d.%d.%d", l3Val.Mysqlversions.Max.Major, l3Val.Mysqlversions.Max.Minor, l3Val.Mysqlversions.Max.Patch)
+				if l3Val.MySQLVersions.Min.Major > 0 {
+					minStr := fmt.Sprintf("%d.%d.%d", l3Val.MySQLVersions.Min.Major, l3Val.MySQLVersions.Min.Minor, l3Val.MySQLVersions.Min.Patch)
+					maxStr := fmt.Sprintf("%d.%d.%d", l3Val.MySQLVersions.Max.Major, l3Val.MySQLVersions.Max.Minor, l3Val.MySQLVersions.Max.Patch)
 
 					paramVmin, _ := version.NewVersion(minStr)
 					paramVmax, _ := version.NewVersion(maxStr)
@@ -327,16 +327,16 @@ func (c *Configurator) loadFloat(byLoad [4]float64) float64 {
 	}
 }
 
-func (c *Configurator) getGcache() {
-	c.reference.gcache = int64(float64(c.reference.innodbRedoLogDim) * c.reference.gcacheLoad)
+func (c *Configurator) getGCache() {
+	c.reference.gcache = int64(float64(c.reference.innoDBRedoLogDim) * c.reference.gcacheLoad)
 	if c.reference.gcache > (c.reference.memoryLeftover / 3) {
 		c.reference.gcache = c.reference.memoryLeftover / 3
 	}
 
 	gcacheFootPrintFactor := c.loadFloat([4]float64{
-		GcacheFootPrintFactorRead,
-		GcacheFootPrintFactorLightWrite,
-		GcacheFootPrintFactorReadWrite,
+		GCacheFootprintFactorRead,
+		GCacheFootprintFactorLightWrite,
+		GCacheFootprintFactorReadWrite,
 		0.5,
 	})
 
@@ -358,7 +358,7 @@ func (c *Configurator) getGcache() {
 
 func (c *Configurator) getConnectionBuffers() {
 	group := c.families["mysql"].Groups["configuration_connection"]
-	if c.request.DBType == DbTypeAsync {
+	if c.request.DBType == DBTypeAsync {
 		group.Parameters["binlog_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_cache_size"])
 		group.Parameters["binlog_stmt_cache_size"] = c.paramBinlogCacheSize(group.Parameters["binlog_stmt_cache_size"])
 	}
@@ -413,19 +413,19 @@ func (c *Configurator) sumConnectionBuffers(params map[string]Parameter) {
 	possibleConnectionTmp := float64(c.reference.connections) * float64(c.reference.loadFactor)
 	possibleTmpMemPressure := int64(math.Floor(possibleConnectionTmp)) * c.reference.tmpTableFootprint
 
-	c.reference.connBuffersMemTot = (totMemory * int64(possibleConnectionTmp)) + possibleTmpMemPressure
-	c.reference.memoryLeftover = int64(c.reference.memoryMySQL) - c.reference.connBuffersMemTot
+	c.reference.connBuffersMemTotal = (totMemory * int64(possibleConnectionTmp)) + possibleTmpMemPressure
+	c.reference.memoryLeftover = int64(c.reference.memoryMySQL) - c.reference.connBuffersMemTotal
 }
 
-func (c *Configurator) getInnodbRedolog() {
+func (c *Configurator) getInnoDBRedoLog() {
 	group := c.families["mysql"].Groups["configuration_innodb"]
-	group.Parameters["innodb_log_file_size"] = c.getRedologDimensionTot(group.Parameters["innodb_log_file_size"])
+	group.Parameters["innodb_log_file_size"] = c.getRedoLogDimensionTotal(group.Parameters["innodb_log_file_size"])
 	c.families["mysql"].Groups["configuration_innodb"] = group
 }
 
-func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
+func (c *Configurator) getRedoLogDimensionTotal(inParameter Parameter) Parameter {
 	var redologTotDimension int64
-	baseDim := float32(c.reference.idealBufferPoolDIm)
+	baseDim := float32(c.reference.idealBufferPoolDim)
 
 	redologIndex := 0.0
 
@@ -445,17 +445,17 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 		redologIndex = 1.0
 	}
 	redologTotDimension = int64(float64(baseDim) * redologIndex)
-	c.reference.innodbRedoLogDim = redologTotDimension
+	c.reference.innoDBRedoLogDim = redologTotDimension
 
 	// Access map once, modify directly
 	group := c.families["mysql"].Groups["configuration_innodb"]
 
 	parameterIbC := group.Parameters["innodb_redo_log_capacity"]
-	parameterIbC.Value = strconv.FormatInt(c.reference.innodbRedoLogDim, 10)
+	parameterIbC.Value = strconv.FormatInt(c.reference.innoDBRedoLogDim, 10)
 	group.Parameters["innodb_redo_log_capacity"] = parameterIbC
 
 	parameter := group.Parameters["innodb_log_files_in_group"]
-	parameter = c.getRedologfilesNumber(redologTotDimension, parameter)
+	parameter = c.getRedoLogFilesNumber(redologTotDimension, parameter)
 	group.Parameters["innodb_log_files_in_group"] = parameter
 
 	a, _ := strconv.ParseInt(parameter.Value, 10, 64)
@@ -468,7 +468,7 @@ func (c *Configurator) getRedologDimensionTot(inParameter Parameter) Parameter {
 	return inParameter
 }
 
-func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Parameter) Parameter {
+func (c *Configurator) getRedoLogFilesNumber(dimension int64, parameter Parameter) Parameter {
 	dimMB := float64(dimension) / (1024 * 1024)
 
 	switch {
@@ -487,11 +487,11 @@ func (c *Configurator) getRedologfilesNumber(dimension int64, parameter Paramete
 	return parameter
 }
 
-func (c *Configurator) getGcacheLoad() float64 {
+func (c *Configurator) getGCacheLoad() float64 {
 	return c.loadFloat([4]float64{1.0, 1.15, 1.2, 1.0})
 }
 
-func (c *Configurator) getInnodbBufferPool(final bool) {
+func (c *Configurator) getInnoDBBufferPool(final bool) {
 	group := c.families["mysql"].Groups["configuration_innodb"]
 
 	if !final {
@@ -503,13 +503,13 @@ func (c *Configurator) getInnodbBufferPool(final bool) {
 	c.families["mysql"].Groups["configuration_innodb"] = group
 }
 
-func (c *Configurator) getInnodbParameters() {
+func (c *Configurator) getInnoDBParameters() {
 	group := c.families["mysql"].Groups["configuration_innodb"]
 	group.Parameters["innodb_adaptive_hash_index"] = c.paramInnoDBAdaptiveHashIndex(group.Parameters["innodb_adaptive_hash_index"])
 	//group.Parameters["innodb_page_cleaners"] = c.paramInnoDBBufferPoolCleaners(group.Parameters["innodb_buffer_pool_instances"])
-	group.Parameters["innodb_purge_threads"] = c.paramInnoDPurgeThreads(group.Parameters["innodb_purge_threads"])
+	group.Parameters["innodb_purge_threads"] = c.paramInnoDBPurgeThreads(group.Parameters["innodb_purge_threads"])
 	group.Parameters["innodb_io_capacity_max"] = c.paramInnoDBIOCapacityMax(group.Parameters["innodb_io_capacity_max"])
-	group.Parameters["innodb_parallel_read_threads"] = c.paramInnoDBinnodb_parallel_read_threads(group.Parameters["innodb_parallel_read_threads"])
+	group.Parameters["innodb_parallel_read_threads"] = c.paramInnoDBParallelReadThreads(group.Parameters["innodb_parallel_read_threads"])
 	c.families["mysql"].Groups["configuration_innodb"] = group
 }
 
@@ -535,11 +535,11 @@ func (c *Configurator) paramInnoDBAdaptiveHashIndex(parameter Parameter) Paramet
 func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Parameter {
 	bufferPollPct := 1.0
 	switch c.request.DBType {
-	case DbTypePXC:
+	case DBTypePXC:
 		bufferPollPct = InnoDBPctValuePXC
-	case DbTypeAsync:
+	case DBTypeAsync:
 		bufferPollPct = InnoDBPctValueAsync
-	case DbTypeGroupReplication:
+	case DBTypeGroupReplication:
 		bufferPollPct = InnoDBPctValueGR
 	}
 
@@ -547,7 +547,7 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 		bufferPool := int64(math.Floor(float64(c.reference.memoryLeftover) * bufferPollPct))
 
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
-		c.reference.innoDBbpSize = bufferPool
+		c.reference.innoDBBPSize = bufferPool
 		c.reference.memoryLeftover -= bufferPool //bufferPoolSubstract
 	} else {
 		bufferPool := int64(0)
@@ -556,22 +556,22 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 		// from the bufferpool
 		if c.reference.memoryLeftover > 0 {
 			reassignFreeMemory := c.CalculateReturnBytes(c.reference.memoryLeftover)
-			bufferPool = c.reference.innoDBbpSize + reassignFreeMemory
+			bufferPool = c.reference.innoDBBPSize + reassignFreeMemory
 			c.reference.memoryLeftover -= reassignFreeMemory
 		} else {
 			// I know is cumbersome and I can simply use the "+" operand, but that will confuse reading
 			// the memory left over at this point is expected to be negative
-			bufferPool = c.reference.innoDBbpSize - int64(math.Abs(float64(c.reference.memoryLeftover)))
+			bufferPool = c.reference.innoDBBPSize - int64(math.Abs(float64(c.reference.memoryLeftover)))
 			c.reference.memoryLeftover = 0
 
 			// Enforce minimum buffer pool floor to prevent going dangerously low
 			minPct := 1.0
 			switch c.request.DBType {
-			case DbTypePXC:
+			case DBTypePXC:
 				minPct = MinLimitPXC
-			case DbTypeAsync:
+			case DBTypeAsync:
 				minPct = MinLimitAsync
-			case DbTypeGroupReplication:
+			case DBTypeGroupReplication:
 				minPct = MinLimitGR
 			}
 
@@ -582,7 +582,7 @@ func (c *Configurator) paramInnoDBBufferPool(parameter Parameter, final bool) Pa
 		}
 
 		parameter.Value = strconv.FormatInt(bufferPool, 10)
-		c.reference.innoDBbpSize = bufferPool
+		c.reference.innoDBBPSize = bufferPool
 
 	}
 	return parameter
@@ -623,7 +623,7 @@ func (c *Configurator) CalculateReturnBytes(incomingBytes int64) int64 {
 func (c *Configurator) paramInnoDBBufferPoolInstances(parameter Parameter) Parameter {
 	instances := 1
 	if c.reference.cpus > 2000 {
-		bpSizeGB := float64(c.reference.innoDBbpSize) / (1024 * 1024 * 1024)
+		bpSizeGB := float64(c.reference.innoDBBPSize) / (1024 * 1024 * 1024)
 		maxCpus := c.reference.cpusMySQL / 1000.0
 
 		factor := bpSizeGB / maxCpus
@@ -652,10 +652,10 @@ func (c *Configurator) paramInnoDBBufferPoolCleaners(parameter Parameter) Parame
 	return parameter
 }
 
-func (c *Configurator) paramInnoDPurgeThreads(parameter Parameter) Parameter {
+func (c *Configurator) paramInnoDBPurgeThreads(parameter Parameter) Parameter {
 	threads := 4
 	if (c.reference.cpus / 1000) > 4 {
-		adjValue := c.reference.gcscacheLoad
+		adjValue := c.reference.gcsCacheLoad
 		if c.request.DBType == "pxc" {
 			adjValue = c.reference.gcacheLoad
 		}
@@ -805,7 +805,7 @@ func (c *Configurator) getProbesAndResources(family string) {
 	c.families[family].Groups["livenessProbe"] = group
 }
 
-func (c *Configurator) setResources(group GroupObj, cpus float64, memory float64) GroupObj {
+func (c *Configurator) setResources(group ParameterGroup, cpus float64, memory float64) ParameterGroup {
 	parameter := group.Parameters["request_memory"]
 	parameter.Value = strconv.FormatFloat(memory*0.95, 'f', 0, 64)
 	group.Parameters["request_memory"] = parameter
@@ -840,10 +840,10 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 
 	fmt.Fprintf(&b, "memory assign to mysql Bytes   = %.0f\n", c.reference.memoryMySQL)
 	fmt.Fprintf(&b, "memory assign to Proxy Bytes   = %.0f\n", c.reference.memoryProxy)
-	fmt.Fprintf(&b, "memory assign to Monitor Bytes = %.0f\n", c.reference.memoryPmm)
+	fmt.Fprintf(&b, "memory assign to Monitor Bytes = %.0f\n", c.reference.memoryPMM)
 	fmt.Fprintf(&b, "cpus assign to mysql  = %.0f\n", c.reference.cpusMySQL)
 	fmt.Fprintf(&b, "cpus assign to Proxy  = %.0f\n", c.reference.cpusProxy)
-	fmt.Fprintf(&b, "cpus assign to Monitor= %.0f\n\n", c.reference.cpusPmm)
+	fmt.Fprintf(&b, "cpus assign to Monitor= %.0f\n\n", c.reference.cpusPMM)
 
 	if c.request.DBType == "pxc" {
 		fmt.Fprintf(&b, "Gcache mem on disk      = %d\n", c.reference.gcache)
@@ -851,15 +851,15 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 	}
 
 	if c.request.DBType == "group_replication" {
-		fmt.Fprintf(&b, "GCS cache mem limit      = %d\n", c.reference.gcscache)
-		fmt.Fprintf(&b, "GCS cache mem possible Footprint    = %d\n\n", c.reference.gcscacheFootprint)
+		fmt.Fprintf(&b, "GCS cache mem limit      = %d\n", c.reference.gcsCache)
+		fmt.Fprintf(&b, "GCS cache mem possible Footprint    = %d\n\n", c.reference.gcsCacheFootprint)
 	}
 
 	fmt.Fprintf(&b, "Tmp Table mem Footprint = %d\n", c.reference.tmpTableFootprint)
-	fmt.Fprintf(&b, "By connection mem tot   = %d\n\n", c.reference.connBuffersMemTot)
-	fmt.Fprintf(&b, "Innodb Bufferpool       = %d\n", c.reference.innoDBbpSize)
+	fmt.Fprintf(&b, "By connection mem tot   = %d\n\n", c.reference.connBuffersMemTotal)
+	fmt.Fprintf(&b, "Innodb Bufferpool       = %d\n", c.reference.innoDBBPSize)
 
-	bpPct := float64(c.reference.innoDBbpSize) / c.reference.memory
+	bpPct := float64(c.reference.innoDBBPSize) / c.reference.memory
 	fmt.Fprintf(&b, "%% BP over av memory     = %.2f\n\n", bpPct)
 	fmt.Fprintf(&b, "memory leftover         = %d\n\n", c.reference.memoryLeftover)
 	fmt.Fprintf(&b, "Load factor cpu        = %.2f\n", c.reference.loadFactor)
@@ -870,18 +870,18 @@ func (c *Configurator) EvaluateResources(responseMsg ResponseMessage) (ResponseM
 
 func (c *Configurator) getResourcesByFamily(family string) (float64, float64) {
 	switch family {
-	case FamilyTypeMysql:
+	case FamilyTypeMySQL:
 		return c.reference.cpusMySQL, c.reference.memoryMySQL
 	case FamilyTypeProxy:
 		return c.reference.cpusProxy, c.reference.memoryProxy
 	case FamilyTypeMonitor:
-		return c.reference.cpusPmm, c.reference.memoryPmm
+		return c.reference.cpusPMM, c.reference.memoryPMM
 	default:
 		return 0.0, 0.0
 	}
 }
 
-func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Parameter) Parameter {
+func (c *Configurator) paramInnoDBParallelReadThreads(parameter Parameter) Parameter {
 	threads := 1
 	cpus := int(c.reference.cpusMySQL / 1000)
 
@@ -894,8 +894,8 @@ func (c *Configurator) paramInnoDBinnodb_parallel_read_threads(parameter Paramet
 	return parameter
 }
 
-// getGCScache adjusts the GCS message cache size based on system resources and parameters, returning the updated parameter.
-func (c *Configurator) getGCScache(parameter Parameter) Parameter {
+// getGCSCache adjusts the GCS message cache size based on system resources and parameters, returning the updated parameter.
+func (c *Configurator) getGCSCache(parameter Parameter) Parameter {
 
 	mem, _ := strconv.ParseFloat(parameter.Default, 64)
 
@@ -911,9 +911,9 @@ func (c *Configurator) getGCScache(parameter Parameter) Parameter {
 		parameter.Value = strconv.FormatUint(val, 10)
 	}
 
-	c.reference.gcscacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
-	c.reference.gcscache = c.reference.gcscacheFootprint
-	c.reference.memoryLeftover -= int64(float64(c.reference.gcscacheFootprint) * GCSCacheMemoryImpactPctBuferPool)
+	c.reference.gcsCacheFootprint, _ = strconv.ParseInt(parameter.Value, 10, 64)
+	c.reference.gcsCache = c.reference.gcsCacheFootprint
+	c.reference.memoryLeftover -= int64(float64(c.reference.gcsCacheFootprint) * GCSCacheMemoryImpactPctBufferPool)
 
 	return parameter
 }
@@ -961,7 +961,7 @@ func (c *Configurator) paramGroupReplicationMessageMaxSize(parameter Parameter) 
 	}
 
 	val := float64(pval)
-	switch c.request.LoadType.Id {
+	switch c.request.LoadType.ID {
 	case 1:
 		val *= 1.0
 	case 2:
@@ -998,7 +998,7 @@ func (c *Configurator) paramGroupReplicationUnreachableMajorityTimeout(parameter
 
 func (c *Configurator) paramGroupReplicationPollSpinLoops(parameter Parameter) Parameter {
 	val, _ := strconv.Atoi(parameter.Value)
-	switch c.request.LoadType.Id {
+	switch c.request.LoadType.ID {
 	case LoadTypeMostlyReads:
 		val = int(parameter.Max)
 	case LoadTypeSomeWrites:
@@ -1048,11 +1048,11 @@ func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b b
 	minlimit := 0.30
 
 	switch DBType {
-	case DbTypeGroupReplication:
+	case DBTypeGroupReplication:
 		minlimit = float64(MinLimitGR)
-	case DbTypeAsync:
+	case DBTypeAsync:
 		minlimit = float64(MinLimitAsync)
-	case DbTypePXC:
+	case DBTypePXC:
 		minlimit = float64(MinLimitPXC)
 	}
 	// Not used anymore the memory leftover is managed dealing with the Bufferpool size
@@ -1068,18 +1068,18 @@ func (c *Configurator) FillResponseMessage(pct float64, msg ResponseMessage, b b
 	//}
 
 	if pct < minlimit {
-		msg.MType = OverutilizingI
-		msg.MText = "Request cancelled not enough resources details: " + b.String()
-		msg.MName = msg.GetMessageText(msg.MType)
+		msg.Type = OverutilizingI
+		msg.Text = "Request cancelled not enough resources details: " + b.String()
+		msg.Name = msg.GetMessageText(msg.Type)
 		overUtilizing = true
 	} else if pct <= minlimit+0.10 {
-		msg.MType = ClosetolimitI
-		msg.MText = "Request processed however not optimal details: " + b.String()
-		msg.MName = msg.GetMessageText(msg.MType)
+		msg.Type = ClosetolimitI
+		msg.Text = "Request processed however not optimal details: " + b.String()
+		msg.Name = msg.GetMessageText(msg.Type)
 	} else {
-		msg.MType = OkI
-		msg.MText = "Request ok, resources details: " + b.String()
-		msg.MName = msg.GetMessageText(msg.MType)
+		msg.Type = OkI
+		msg.Text = "Request ok, resources details: " + b.String()
+		msg.Name = msg.GetMessageText(msg.Type)
 	}
 
 	return msg, overUtilizing

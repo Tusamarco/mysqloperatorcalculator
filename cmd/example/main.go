@@ -10,13 +10,13 @@ import (
 )
 
 func main() {
-	var moc calculator.MysqlOperatorCalculator
+	var moc calculator.MySQLOperatorCalculator
 
 	testSupportedJson(moc.GetSupportedLayouts(), moc)
 	testGetconfiguration(moc)
 }
 
-func testSupportedJson(supported calculator.Configuration, calc calculator.MysqlOperatorCalculator) {
+func testSupportedJson(supported calculator.Configuration, calc calculator.MySQLOperatorCalculator) {
 	output, err := json.MarshalIndent(&supported, "", "  ")
 	if err != nil {
 		log.Printf("Failed to marshal JSON: %v\n", err)
@@ -28,25 +28,25 @@ func testSupportedJson(supported calculator.Configuration, calc calculator.Mysql
 // Get the whole set of parameters plus message as the following objects hierarchy
 // Families -> Groups -> Parameters
 // THE VALID value in parameter to be considered as CURRENT is !!Value!!!
-func testGetconfiguration(moc calculator.MysqlOperatorCalculator) {
+func testGetconfiguration(moc calculator.MySQLOperatorCalculator) {
 	var myRequest calculator.ConfigurationRequest
 	var conf calculator.Configuration
 	var err error
 
-	myRequest.LoadType = calculator.LoadType{Id: calculator.LoadTypeSomeWrites}
+	myRequest.LoadType = calculator.LoadType{ID: calculator.LoadTypeSomeWrites}
 	myRequest.MySQLDedicated = true
 
-	myRequest.Dimension = calculator.Dimension{Id: calculator.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
+	myRequest.Dimension = calculator.Dimension{ID: calculator.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
 
 	myRequest.Dimension.MemoryBytes, err = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
 	if err != nil {
 		log.Fatalf("Memory conversion error: %v\n", err)
 	}
 
-	myRequest.DBType = calculator.DbTypeGroupReplication
-	myRequest.Output = calculator.ResultOutputFormatJson
+	myRequest.DBType = calculator.DBTypeGroupReplication
+	myRequest.Output = calculator.ResultOutputFormatJSON
 	myRequest.Connections = 3000
-	myRequest.Mysqlversion = calculator.Version{Major: 8, Minor: 4, Patch: 8}
+	myRequest.MySQLVersion = calculator.Version{Major: 8, Minor: 4, Patch: 8}
 	myRequest.ProviderCostPct = 0.12
 
 	conf.Init()
@@ -57,8 +57,8 @@ func testGetconfiguration(moc calculator.MysqlOperatorCalculator) {
 		log.Printf("Calculation error: %v\n", calcErr)
 	}
 
-	if responseMessage.MType > 0 {
-		log.Printf("Message %d: %s %s\n", responseMessage.MType, responseMessage.MName, responseMessage.MText)
+	if responseMessage.Type > 0 {
+		log.Printf("Message %d: %s %s\n", responseMessage.Type, responseMessage.Name, responseMessage.Text)
 	}
 
 	if len(families) > 0 {
@@ -66,7 +66,7 @@ func testGetconfiguration(moc calculator.MysqlOperatorCalculator) {
 		// 1. Parsing families and Groups one by one
 		//----------------------------------------------------------
 
-		if mysqlFamily, err := moc.GetFamily(calculator.FamilyTypeMysql); err == nil {
+		if mysqlFamily, err := moc.GetFamily(calculator.FamilyTypeMySQL); err == nil {
 			printFamilyGroup(mysqlFamily, calculator.GroupNameMySQLd, " ", "mysql configuration")
 			printFamilyGroup(mysqlFamily, calculator.GroupNameProbes, " ", "mysql probes")
 			printFamilyGroup(mysqlFamily, calculator.GroupNameResources, " ", "mysql resources")
