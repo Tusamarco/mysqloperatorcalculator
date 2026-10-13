@@ -1,4 +1,4 @@
-package mysqloperatorcalculator
+package calculator
 
 import (
 	"bytes"
@@ -40,9 +40,9 @@ type MySQLVersions struct {
 }
 
 type ResponseMessage struct {
-	MType int    `json:"type"`
-	MName string `json:"name"`
-	MText string `json:"text"`
+	Type int    `json:"type"`
+	Name string `json:"name"`
+	Text string `json:"text"`
 }
 
 type Configuration struct {
@@ -51,7 +51,7 @@ type Configuration struct {
 	LoadType        []LoadType    `json:"loadtype"`
 	Connections     []int         `json:"connections"`
 	Output          []string      `json:"output"`
-	Mysqlversions   MySQLVersions `json:"mysqlversions"`
+	MySQLVersions   MySQLVersions `json:"mysqlversions"`
 	ProviderCostPct float64       `json:"providercostpct"`
 	MySQLDedicated  bool          `json:"mysqldedicated"`
 }
@@ -62,27 +62,27 @@ type ConfigurationRequest struct {
 	LoadType        LoadType  `json:"loadtype"`
 	Connections     int       `json:"connections"`
 	Output          string    `json:"output"`
-	Mysqlversion    Version   `json:"mysqlversion"`
+	MySQLVersion    Version   `json:"mysqlversion"`
 	ProviderCostPct float64   `json:"providercostpct"`
 	MySQLDedicated  bool      `json:"mysqldedicated"`
 }
 
 type Dimension struct {
-	Id          int     `json:"id"`
+	ID          int     `json:"id"`
 	Name        string  `json:"name"`
 	Cpu         int     `json:"cpu"`
 	Memory      string  `json:"memory"`
 	MemoryBytes float64 `json:"-"`
-	MysqlCpu    int     `json:"mysqlCpu"`
-	ProxyCpu    int     `json:"proxyCpu"`
-	PmmCpu      int     `json:"pmmCpu"`
-	MysqlMemory float64 `json:"mysqlMemory"`
+	MySQLCPU    int     `json:"mysqlCpu"`
+	ProxyCPU    int     `json:"proxyCpu"`
+	PMMCPU      int     `json:"pmmCpu"`
+	MySQLMemory float64 `json:"mysqlMemory"`
 	ProxyMemory float64 `json:"proxyMemory"`
-	PmmMemory   float64 `json:"pmmMemory"`
+	PMMMemory   float64 `json:"pmmMemory"`
 }
 
 type LoadType struct {
-	Id      int    `json:"id"`
+	ID      int    `json:"id"`
 	Name    string `json:"name"`
 	Example string `json:"example"`
 }
@@ -95,7 +95,7 @@ type Parameter struct {
 	Default       string        `yaml:"default" json:"default"`
 	Min           uint64        `yaml:"min" json:"min"`
 	Max           uint64        `yaml:"max" json:"max"`
-	Mysqlversions MySQLVersions `json:"mysqlversions"`
+	MySQLVersions MySQLVersions `json:"mysqlversions"`
 }
 
 func (p Parameter) MarshalJSON() ([]byte, error) {
@@ -110,19 +110,19 @@ func (p Parameter) MarshalJSON() ([]byte, error) {
 	})
 }
 
-type GroupObj struct {
+type ParameterGroup struct {
 	Name       string               `yaml:"name" json:"name"`
 	Parameters map[string]Parameter `yaml:"parameters" json:"parameters"`
 }
 
 type Family struct {
-	Name   string              `yaml:"name" json:"name"`
-	Groups map[string]GroupObj `yaml:"groups" json:"groups"`
+	Name   string                    `yaml:"name" json:"name"`
+	Groups map[string]ParameterGroup `yaml:"groups" json:"groups"`
 }
 
 func (conf *Configuration) GetDimensionByID(id int) Dimension {
 	for _, dim := range conf.Dimension {
-		if dim.Id == id {
+		if dim.ID == id {
 			return dim
 		}
 	}
@@ -131,7 +131,7 @@ func (conf *Configuration) GetDimensionByID(id int) Dimension {
 
 func (conf *Configuration) GetLoadByID(id int) LoadType {
 	for _, load := range conf.LoadType {
-		if load.Id == id {
+		if load.ID == id {
 			return load
 		}
 	}
@@ -158,8 +158,8 @@ func (respM *ResponseMessage) GetMessageText(id int) string {
 }
 
 func (conf *Configuration) Init() {
-	conf.DBType = []string{DbTypeGroupReplication, DbTypePXC, DbTypeAsync}
-	conf.Output = []string{ResultOutputFormatHuman, ResultOutputFormatJson}
+	conf.DBType = []string{DBTypeGroupReplication, DBTypePXC, DBTypeAsync}
+	conf.Output = []string{ResultOutputFormatHuman, ResultOutputFormatJSON}
 	conf.Dimension = []Dimension{
 		{1, "XSmall", 1000, "2GB", 2147483648, 600, 200, 100, 1825361100, 214748364, 107374182},
 		{2, "Small", 2500, "4GB", 4294967296, 2000, 350, 150, 3758096384, 429496729, 107374182},
@@ -262,7 +262,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 
 	}
 
-	mysqlGroups := map[string]GroupObj{
+	mysqlGroups := map[string]ParameterGroup{
 		"readinessProbe": {"readinessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "15", "15", 15, 600, MySQLVersions{}}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 600, MySQLVersions{}}}},
 		"resources": {"resources", map[string]Parameter{
@@ -273,7 +273,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		}},
 	}
 
-	if DBTypeRequest == DbTypeAsync {
+	if DBTypeRequest == DBTypeAsync {
 		// Source-side binlog tuning — valid on any node (any node may be promoted).
 		connectionGroup["binlog_cache_size"] = Parameter{"binlog_cache_size", "configuration", "connection", "131072", "32768", 4096, 0, MySQLVersions{V8_0_46, V11_1_1}}
 		connectionGroup["binlog_stmt_cache_size"] = Parameter{"binlog_stmt_cache_size", "configuration", "connection", "131072", "32768", 4096, 0, MySQLVersions{V8_0_46, V11_1_1}}
@@ -295,7 +295,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		}
 	}
 
-	haproxyGroups := map[string]GroupObj{
+	haproxyGroups := map[string]ParameterGroup{
 		"readinessProbe": {"readinessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
 		"haproxyConfig": {"haproxy", map[string]Parameter{
@@ -313,7 +313,7 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		}},
 	}
 
-	pmmGroups := map[string]GroupObj{
+	pmmGroups := map[string]ParameterGroup{
 		"readinessProbe": {"readinessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 30, MySQLVersions{}}}},
 		"livenessProbe":  {"livenessProbe", map[string]Parameter{"timeoutSeconds": {"timeoutSeconds", "", "readinessProbe", "5", "5", 5, 60, MySQLVersions{}}}},
 		"resources": {"resources", map[string]Parameter{
@@ -324,25 +324,25 @@ func (family *Family) Init(DBTypeRequest string) map[string]Family {
 		}},
 	}
 
-	mysqlGroups["configuration_connection"] = GroupObj{"connections", connectionGroup}
-	mysqlGroups["configuration_server"] = GroupObj{"server", serverGroup}
-	mysqlGroups["configuration_innodb"] = GroupObj{"innodb", innodbGroup}
-	mysqlGroups["configuration_replica"] = GroupObj{"replica", replicaGroup}
+	mysqlGroups["configuration_connection"] = ParameterGroup{"connections", connectionGroup}
+	mysqlGroups["configuration_server"] = ParameterGroup{"server", serverGroup}
+	mysqlGroups["configuration_innodb"] = ParameterGroup{"innodb", innodbGroup}
+	mysqlGroups["configuration_replica"] = ParameterGroup{"replica", replicaGroup}
 
-	if DBTypeRequest == DbTypePXC {
-		mysqlGroups["configuration_galera"] = GroupObj{"galera", wsrepGroup}
+	if DBTypeRequest == DBTypePXC {
+		mysqlGroups["configuration_galera"] = ParameterGroup{"galera", wsrepGroup}
 	}
 
-	if DBTypeRequest == DbTypeGroupReplication {
-		mysqlGroups["configuration_groupReplication"] = GroupObj{"groupReplication", groupReplicationGroup}
+	if DBTypeRequest == DBTypeGroupReplication {
+		mysqlGroups["configuration_groupReplication"] = ParameterGroup{"groupReplication", groupReplicationGroup}
 	}
 
-	if DBTypeRequest == DbTypeAsync {
-		mysqlGroups["configuration_async"] = GroupObj{"async", asyncGroup}
+	if DBTypeRequest == DBTypeAsync {
+		mysqlGroups["configuration_async"] = ParameterGroup{"async", asyncGroup}
 	}
 
 	return map[string]Family{
-		FamilyTypeMysql:   {"mysql", mysqlGroups},
+		FamilyTypeMySQL:   {"mysql", mysqlGroups},
 		FamilyTypeProxy:   {"haproxy", haproxyGroups},
 		FamilyTypeMonitor: {"pmm", pmmGroups},
 	}
@@ -451,7 +451,7 @@ func (f Family) parseResourcesHuman(padding string) bytes.Buffer {
 	return b
 }
 
-func (f Family) parseParamsHuman(b *bytes.Buffer, group GroupObj, padding string) {
+func (f Family) parseParamsHuman(b *bytes.Buffer, group ParameterGroup, padding string) {
 
 	keys := make([]string, 0, len(group.Parameters))
 	for k := range group.Parameters {
@@ -472,27 +472,27 @@ func (conf *Configuration) CalculateOpenDimension(dimension Dimension) Dimension
 
 		// Calculate ratios
 		if conf.MySQLDedicated {
-			dimension.MysqlMemory = dimension.MemoryBytes * 1
-			dimension.MysqlCpu = int(float64(dimension.Cpu) * 1)
+			dimension.MySQLMemory = dimension.MemoryBytes * 1
+			dimension.MySQLCPU = int(float64(dimension.Cpu) * 1)
 
 			return dimension
 
 		}
-		ratioMysqlCpu := float64(calcDimension.MysqlCpu) / float64(calcDimension.Cpu)
-		ratioProxyCpu := float64(calcDimension.ProxyCpu) / float64(calcDimension.Cpu)
-		ratioPmmCpu := float64(calcDimension.PmmCpu) / float64(calcDimension.Cpu)
+		ratioMysqlCpu := float64(calcDimension.MySQLCPU) / float64(calcDimension.Cpu)
+		ratioProxyCpu := float64(calcDimension.ProxyCPU) / float64(calcDimension.Cpu)
+		ratioPmmCpu := float64(calcDimension.PMMCPU) / float64(calcDimension.Cpu)
 
-		ratioMysqlMem := calcDimension.MysqlMemory / calcDimension.MemoryBytes
+		ratioMysqlMem := calcDimension.MySQLMemory / calcDimension.MemoryBytes
 		ratioProxyMem := calcDimension.ProxyMemory / calcDimension.MemoryBytes
-		ratioPmmMem := calcDimension.PmmMemory / calcDimension.MemoryBytes
+		ratioPmmMem := calcDimension.PMMMemory / calcDimension.MemoryBytes
 
-		dimension.MysqlCpu = int(float64(dimension.Cpu) * ratioMysqlCpu)
-		dimension.ProxyCpu = int(float64(dimension.Cpu) * ratioProxyCpu)
-		dimension.PmmCpu = int(float64(dimension.Cpu) * ratioPmmCpu)
+		dimension.MySQLCPU = int(float64(dimension.Cpu) * ratioMysqlCpu)
+		dimension.ProxyCPU = int(float64(dimension.Cpu) * ratioProxyCpu)
+		dimension.PMMCPU = int(float64(dimension.Cpu) * ratioPmmCpu)
 
-		dimension.MysqlMemory = dimension.MemoryBytes * ratioMysqlMem
+		dimension.MySQLMemory = dimension.MemoryBytes * ratioMysqlMem
 		dimension.ProxyMemory = dimension.MemoryBytes * ratioProxyMem
-		dimension.PmmMemory = dimension.MemoryBytes * ratioPmmMem
+		dimension.PMMMemory = dimension.MemoryBytes * ratioPmmMem
 	}
 
 	return dimension
@@ -535,8 +535,8 @@ func InBetweenFloat(val, min, max float64) bool {
 }
 
 func (conf *Configuration) getMySQLVersion() {
-	conf.Mysqlversions.Max = MySQLMaxSupported
-	conf.Mysqlversions.Min = MySQLMinSupported
+	conf.MySQLVersions.Max = MySQLMaxSupported
+	conf.MySQLVersions.Min = MySQLMinSupported
 }
 
 // =====================================================
@@ -561,14 +561,14 @@ func (d *Dimension) formatMemoryMB(bytes float64) string {
 func (conf *Configuration) ScaleDimension(start Dimension) (Dimension, error) {
 	// Find the higher predefined dimension securely
 	var higher Dimension
-	var id = start.Id
+	var id = start.ID
 	found := false
 
 	for i, dim := range conf.Dimension {
-		if dim.Id == start.Id {
+		if dim.ID == start.ID {
 			if i+1 < len(conf.Dimension) && conf.Dimension[i+1].Cpu > 0 {
 				higher = conf.Dimension[i+1]
-				id = higher.Id // Update target id to higher dimension id
+				id = higher.ID // Update target id to higher dimension id
 				found = true
 			}
 			break
@@ -583,13 +583,13 @@ func (conf *Configuration) ScaleDimension(start Dimension) (Dimension, error) {
 	}
 
 	// Calculate resource percentages from the higher dimension.
-	pctMysqlCPU := float64(higher.MysqlCpu) / float64(higher.Cpu)
-	pctProxyCPU := float64(higher.ProxyCpu) / float64(higher.Cpu)
-	pctPmmCPU := float64(higher.PmmCpu) / float64(higher.Cpu)
+	pctMysqlCPU := float64(higher.MySQLCPU) / float64(higher.Cpu)
+	pctProxyCPU := float64(higher.ProxyCPU) / float64(higher.Cpu)
+	pctPmmCPU := float64(higher.PMMCPU) / float64(higher.Cpu)
 
-	pctMysqlMem := higher.MysqlMemory / higher.MemoryBytes
+	pctMysqlMem := higher.MySQLMemory / higher.MemoryBytes
 	pctProxyMem := higher.ProxyMemory / higher.MemoryBytes
-	pctPmmMem := higher.PmmMemory / higher.MemoryBytes
+	pctPmmMem := higher.PMMMemory / higher.MemoryBytes
 
 	// Increment totals.
 	const cpuIncrement = CPUIncrement
@@ -622,21 +622,21 @@ func (conf *Configuration) ScaleDimension(start Dimension) (Dimension, error) {
 
 	// If the new memory set is equal or higher the next Dimension we shift the id
 	if newMemoryBytes < higher.MemoryBytes {
-		id = start.Id // Keep original ID if threshold is not crossed
+		id = start.ID // Keep original ID if threshold is not crossed
 	}
 
 	// Build the new dimension.
 	return Dimension{
-		Id:          id,
+		ID:          id,
 		Name:        "scaled",
 		Cpu:         newCPU,
 		MemoryBytes: newMemoryBytes,
 		Memory:      start.formatMemoryMB(newMemoryBytes), // Call using start as receiver
-		MysqlCpu:    start.MysqlCpu + incMysqlCPU,
-		ProxyCpu:    start.ProxyCpu + incProxyCPU,
-		PmmCpu:      start.PmmCpu + incPmmCPU,
-		MysqlMemory: start.MysqlMemory + incMysqlMem,
+		MySQLCPU:    start.MySQLCPU + incMysqlCPU,
+		ProxyCPU:    start.ProxyCPU + incProxyCPU,
+		PMMCPU:      start.PMMCPU + incPmmCPU,
+		MySQLMemory: start.MySQLMemory + incMysqlMem,
 		ProxyMemory: start.ProxyMemory + incProxyMem,
-		PmmMemory:   start.PmmMemory + incPmmMem,
+		PMMMemory:   start.PMMMemory + incPmmMem,
 	}, nil
 }

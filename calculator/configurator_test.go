@@ -1,4 +1,4 @@
-package mysqloperatorcalculator
+package calculator
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ func newTestConfigurator(loadID int, dbtype string, connections int, mysqlCPU fl
 		request: ConfigurationRequest{
 			DBType:      dbtype,
 			Connections: connections,
-			LoadType:    LoadType{Id: loadID},
+			LoadType:    LoadType{ID: loadID},
 		},
 		reference: &references{
 			loadID:      loadID,
@@ -81,7 +81,7 @@ func TestLoadValues_AllLoadTypes(t *testing.T) {
 		{99, "B"}, // unknown ID falls back to index 1 (SomeWrites)
 	}
 	for _, tc := range cases {
-		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
+		c := newTestConfigurator(tc.loadID, DBTypePXC, 50, 1200, 4*testGB)
 		got := c.loadValues([4]string{"A", "B", "C", "D"})
 		if got != tc.want {
 			t.Errorf("loadID=%d: loadValues() = %q, want %q", tc.loadID, got, tc.want)
@@ -101,7 +101,7 @@ func TestLoadFloat_AllLoadTypes(t *testing.T) {
 		{99, 1.0}, // unknown ID falls back to index 0 (MostlyReads)
 	}
 	for _, tc := range cases {
-		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
+		c := newTestConfigurator(tc.loadID, DBTypePXC, 50, 1200, 4*testGB)
 		got := c.loadFloat([4]float64{1.0, 2.0, 3.0, 4.0})
 		if got != tc.want {
 			t.Errorf("loadID=%d: loadFloat() = %f, want %f", tc.loadID, got, tc.want)
@@ -124,8 +124,8 @@ func TestGetGcacheLoad(t *testing.T) {
 		{LoadTypeHeavyWrites, 1.0},
 	}
 	for _, tc := range cases {
-		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
-		got := c.getGcacheLoad()
+		c := newTestConfigurator(tc.loadID, DBTypePXC, 50, 1200, 4*testGB)
+		got := c.getGCacheLoad()
 		if got != tc.want {
 			t.Errorf("loadID=%d: getGcacheLoad() = %f, want %f", tc.loadID, got, tc.want)
 		}
@@ -148,7 +148,7 @@ func TestCalculateTmpTableFootprint(t *testing.T) {
 		{LoadTypeHeavyWrites, 0.05},
 	}
 	for _, tc := range cases {
-		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
+		c := newTestConfigurator(tc.loadID, DBTypePXC, 50, 1200, 4*testGB)
 		p := Parameter{Value: strconv.FormatInt(base, 10)}
 		c.calculateTmpTableFootprint(p)
 		want := int64(float64(base) * tc.wantMult)
@@ -176,7 +176,7 @@ func TestParamConnectionBuffers(t *testing.T) {
 		{LoadTypeHeavyWrites, "1048576", "2097152", "707788", "524288"},
 	}
 	for _, tc := range cases {
-		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
+		c := newTestConfigurator(tc.loadID, DBTypePXC, 50, 1200, 4*testGB)
 		p := Parameter{}
 
 		if got := c.paramJoinBuffer(p).Value; got != tc.wantJoin {
@@ -205,7 +205,7 @@ func TestParamInnoDBIOCapacityMax(t *testing.T) {
 		{LoadTypeHeavyWrites, "20000"},
 	}
 	for _, tc := range cases {
-		c := newTestConfigurator(tc.loadID, DbTypePXC, 50, 1200, 4*testGB)
+		c := newTestConfigurator(tc.loadID, DBTypePXC, 50, 1200, 4*testGB)
 		got := c.paramInnoDBIOCapacityMax(Parameter{}).Value
 		if got != tc.want {
 			t.Errorf("loadID=%d paramInnoDBIOCapacityMax: got %s, want %s", tc.loadID, got, tc.want)
@@ -233,7 +233,7 @@ func TestCalculateLoadConnectionFactor(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dim := Dimension{MysqlCpu: tc.mysqlCPU}
+			dim := Dimension{MySQLCPU: tc.mysqlCPU}
 			c := &Configurator{
 				reference: &references{
 					loadID:      tc.loadID,
@@ -249,7 +249,7 @@ func TestCalculateLoadConnectionFactor(t *testing.T) {
 }
 
 func TestCalculateLoadConnectionFactor_ReturnsPositiveFactor(t *testing.T) {
-	dim := Dimension{MysqlCpu: 4000}
+	dim := Dimension{MySQLCPU: 4000}
 	c := &Configurator{
 		reference: &references{
 			loadID:      LoadTypeMostlyReads,
@@ -272,7 +272,7 @@ func TestCalculateLoadConnectionFactor_ReturnsPositiveFactor(t *testing.T) {
 func TestParamInnoDBBufferPool_FirstPass_PXC(t *testing.T) {
 	memLeftover := int64(8 * testGB)
 	c := &Configurator{
-		request:   ConfigurationRequest{DBType: DbTypePXC},
+		request:   ConfigurationRequest{DBType: DBTypePXC},
 		reference: &references{memoryLeftover: memLeftover},
 	}
 	result := c.paramInnoDBBufferPool(Parameter{}, false)
@@ -281,8 +281,8 @@ func TestParamInnoDBBufferPool_FirstPass_PXC(t *testing.T) {
 	if got != want {
 		t.Errorf("PXC first pass bufferPool = %d, want %d", got, want)
 	}
-	if c.reference.innoDBbpSize != want {
-		t.Errorf("PXC first pass innoDBbpSize = %d, want %d", c.reference.innoDBbpSize, want)
+	if c.reference.innoDBBPSize != want {
+		t.Errorf("PXC first pass innoDBbpSize = %d, want %d", c.reference.innoDBBPSize, want)
 	}
 	// leftover should be reduced by the allocated amount
 	if c.reference.memoryLeftover != memLeftover-want {
@@ -293,7 +293,7 @@ func TestParamInnoDBBufferPool_FirstPass_PXC(t *testing.T) {
 func TestParamInnoDBBufferPool_FirstPass_GR(t *testing.T) {
 	memLeftover := int64(8 * testGB)
 	c := &Configurator{
-		request:   ConfigurationRequest{DBType: DbTypeGroupReplication},
+		request:   ConfigurationRequest{DBType: DBTypeGroupReplication},
 		reference: &references{memoryLeftover: memLeftover},
 	}
 	result := c.paramInnoDBBufferPool(Parameter{}, false)
@@ -312,10 +312,10 @@ func TestParamInnoDBBufferPool_SecondPass_PositiveLeftover(t *testing.T) {
 	bpSize := int64(5 * testGB)
 	leftover := int64(500 * testMB)
 	c := &Configurator{
-		request: ConfigurationRequest{DBType: DbTypePXC},
+		request: ConfigurationRequest{DBType: DBTypePXC},
 		reference: &references{
 			memoryMySQL:    float64(8 * testGB),
-			innoDBbpSize:   bpSize,
+			innoDBBPSize:   bpSize,
 			memoryLeftover: leftover,
 		},
 	}
@@ -335,10 +335,10 @@ func TestParamInnoDBBufferPool_SecondPass_NegativeLeftover_FloorEnforced_PXC(t *
 	totalMySQLMem := float64(8 * testGB)
 	// Set a buffer pool so small that subtracting the overrun would go below MinLimitPXC
 	c := &Configurator{
-		request: ConfigurationRequest{DBType: DbTypePXC},
+		request: ConfigurationRequest{DBType: DBTypePXC},
 		reference: &references{
 			memoryMySQL:    totalMySQLMem,
-			innoDBbpSize:   int64(2 * testGB),  // very small initial BP
+			innoDBBPSize:   int64(2 * testGB),  // very small initial BP
 			memoryLeftover: int64(-3 * testGB), // large overrun
 		},
 	}
@@ -353,10 +353,10 @@ func TestParamInnoDBBufferPool_SecondPass_NegativeLeftover_FloorEnforced_PXC(t *
 func TestParamInnoDBBufferPool_SecondPass_NegativeLeftover_FloorEnforced_GR(t *testing.T) {
 	totalMySQLMem := float64(8 * testGB)
 	c := &Configurator{
-		request: ConfigurationRequest{DBType: DbTypeGroupReplication},
+		request: ConfigurationRequest{DBType: DBTypeGroupReplication},
 		reference: &references{
 			memoryMySQL:    totalMySQLMem,
-			innoDBbpSize:   int64(2 * testGB),
+			innoDBBPSize:   int64(2 * testGB),
 			memoryLeftover: int64(-3 * testGB),
 		},
 	}
@@ -380,23 +380,23 @@ func TestFillResponseMessage(t *testing.T) {
 		wantType int
 	}{
 		// PXC: MinLimitPXC=0.50, close-to-limit band [0.50, 0.60]
-		{"PXC below min", 0.35, DbTypePXC, OverutilizingI},
-		{"PXC at min", 0.50, DbTypePXC, ClosetolimitI},
-		{"PXC close to limit", 0.55, DbTypePXC, ClosetolimitI},
-		{"PXC ok", 0.70, DbTypePXC, OkI},
+		{"PXC below min", 0.35, DBTypePXC, OverutilizingI},
+		{"PXC at min", 0.50, DBTypePXC, ClosetolimitI},
+		{"PXC close to limit", 0.55, DBTypePXC, ClosetolimitI},
+		{"PXC ok", 0.70, DBTypePXC, OkI},
 
 		// GR: MinLimitGR=0.40, close-to-limit band [0.40, 0.50]
-		{"GR below min", 0.30, DbTypeGroupReplication, OverutilizingI},
-		{"GR at min", 0.40, DbTypeGroupReplication, ClosetolimitI},
-		{"GR close to limit", 0.45, DbTypeGroupReplication, ClosetolimitI},
-		{"GR ok", 0.60, DbTypeGroupReplication, OkI},
+		{"GR below min", 0.30, DBTypeGroupReplication, OverutilizingI},
+		{"GR at min", 0.40, DBTypeGroupReplication, ClosetolimitI},
+		{"GR close to limit", 0.45, DBTypeGroupReplication, ClosetolimitI},
+		{"GR ok", 0.60, DBTypeGroupReplication, OkI},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &Configurator{reference: &references{}}
 			msg, _ := c.FillResponseMessage(tc.bpPct, ResponseMessage{}, bytes.Buffer{}, tc.dbtype)
-			if msg.MType != tc.wantType {
-				t.Errorf("bpPct=%.2f dbtype=%s: MType=%d, want %d", tc.bpPct, tc.dbtype, msg.MType, tc.wantType)
+			if msg.Type != tc.wantType {
+				t.Errorf("bpPct=%.2f dbtype=%s: Type=%d, want %d", tc.bpPct, tc.dbtype, msg.Type, tc.wantType)
 			}
 		})
 	}
@@ -404,7 +404,7 @@ func TestFillResponseMessage(t *testing.T) {
 
 func TestFillResponseMessage_OverutilizingReturnsTrue(t *testing.T) {
 	c := &Configurator{reference: &references{}}
-	_, over := c.FillResponseMessage(0.20, ResponseMessage{}, bytes.Buffer{}, DbTypePXC)
+	_, over := c.FillResponseMessage(0.20, ResponseMessage{}, bytes.Buffer{}, DBTypePXC)
 	if !over {
 		t.Error("expected overUtilizing=true for bpPct=0.20 on PXC")
 	}
@@ -412,7 +412,7 @@ func TestFillResponseMessage_OverutilizingReturnsTrue(t *testing.T) {
 
 func TestFillResponseMessage_OkReturnsFalse(t *testing.T) {
 	c := &Configurator{reference: &references{}}
-	_, over := c.FillResponseMessage(0.75, ResponseMessage{}, bytes.Buffer{}, DbTypePXC)
+	_, over := c.FillResponseMessage(0.75, ResponseMessage{}, bytes.Buffer{}, DBTypePXC)
 	if over {
 		t.Error("expected overUtilizing=false for bpPct=0.75 on PXC")
 	}

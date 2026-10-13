@@ -134,7 +134,7 @@ The calculator treats each replication type differently because their internal c
 | **Reasoning** | Galera’s GCache footprint is relatively small and stable. | GR’s **certification cache** can bloat during long transactions, risking OOM kills. | No cluster caches compete; ceiling stays conservative so the node is safe while applying relay logs. |
 | **Min. InnoDB Memory floor** | `0.50` (50% of total dimension memory) | `0.40` (40% of total dimension memory) | `0.52` (52% of total dimension memory) |
 | **Fixed cluster overhead** | GCache footprint (load-dependent) | 50 MiB `GroupRepGCSCacheMemStructureCost` + per-connection GCS weight | None |
-| **Tuning Constants** | `GcacheFootPrintFactorRead = 0.5`, etc. | `GroupRepGCSCacheMemStructureCost`, `GCSConnWeight` | `InnoDBPctValueAsync`, `MinLimitAsync` |
+| **Tuning Constants** | `GCacheFootprintFactorRead = 0.5`, etc. | `GroupRepGCSCacheMemStructureCost`, `GCSConnWeight` | `InnoDBPctValueAsync`, `MinLimitAsync` |
 | **Role model** | All cluster nodes are symmetric | All cluster nodes are symmetric | Role-agnostic: same config is valid for source or replica; the Operator flips `read_only`/`super_read_only` at runtime |
 
 These constraints are mapped directly in the code:
@@ -156,7 +156,7 @@ Clone the repository and build the binary:
 ```bash
 git clone https://github.com/Tusamarco/mysqloperatorcalculator
 cd mysqloperatorcalculator
-go build -o mysqloperatorcalculator ./src
+go build -o server ./cmd/server
 ```
 
 ### Command‑Line Flags
@@ -204,14 +204,14 @@ The module is fully importable and exposes a clean API for direct integration in
 
 ### 1. Import the Module
 ```go
-import MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+import "github.com/Tusamarco/mysqloperatorcalculator/v2/calculator"
 ```
 
 ### 2. Supported Layouts (Metadata)
 Instead of hitting the `/supported` HTTP endpoint, fetch the layouts programmatically:
 ```go
-var calculator MO.MysqlOperatorCalculator
-supportedConf := calculator.GetSupportedLayouts()
+var moc calculator.MySQLOperatorCalculator
+supportedConf := moc.GetSupportedLayouts()
 
 // Optional: Print to JSON
 output, _ := json.MarshalIndent(&supportedConf, "", " ")
@@ -228,25 +228,25 @@ import (
     "bytes"
     "fmt"
     "log"
-    MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+    "github.com/Tusamarco/mysqloperatorcalculator/v2/calculator"
 )
 
 func main() {
-    var moc MO.MysqlOperatorCalculator
-    var myRequest MO.ConfigurationRequest
-    var conf MO.Configuration
+    var moc calculator.MySQLOperatorCalculator
+    var myRequest calculator.ConfigurationRequest
+    var conf calculator.Configuration
     var err error
 
     // 1. Setup Request Parameters
-    myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
-    myRequest.DBType = MO.DbTypeGroupReplication 
-    myRequest.Output = MO.ResultOutputFormatHuman
+    myRequest.LoadType = calculator.LoadType{ID: calculator.LoadTypeSomeWrites}
+    myRequest.DBType = calculator.DBTypeGroupReplication
+    myRequest.Output = calculator.ResultOutputFormatHuman
     myRequest.Connections = 3000
-    myRequest.Mysqlversion = MO.Version{Major: 8, Minor: 4, Patch: 8}
+    myRequest.MySQLVersion = calculator.Version{Major: 8, Minor: 4, Patch: 8}
     myRequest.ProviderCostPct = 0.12
 
     // Using an "Open" dimension requires explicit CPU and Memory
-    myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
+    myRequest.Dimension = calculator.Dimension{ID: calculator.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
 
     // Convert string memory ("2.5G") to Bytes (Required for internal calculations)
     myRequest.Dimension.MemoryBytes, err = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
@@ -263,22 +263,22 @@ func main() {
        log.Fatalf("Calculation error: %v\n", calcErr)
     }
 
-    if responseMessage.MType > 0 {
-       log.Printf("Status Message [%d]: %s - %s\n", responseMessage.MType, responseMessage.MName, responseMessage.MText)
+    if responseMessage.Type > 0 {
+       log.Printf("Status Message [%d]: %s - %s\n", responseMessage.Type, responseMessage.Name, responseMessage.Text)
     }
 
     // 3. Extract Specific Configurations
     if len(families) > 0 {
         // Example: Grabbing just the MySQL family
-        if mysqlFamily, err := moc.GetFamily(MO.FamilyTypeMysql); err == nil {
+        if mysqlFamily, err := moc.GetFamily(calculator.FamilyTypeMySQL); err == nil {
             // Retrieve specific blocks
-            mysqlConf, _ := mysqlFamily.ParseFamilyGroup(MO.GroupNameMySQLd, "   ")
+            mysqlConf, _ := mysqlFamily.ParseFamilyGroup(calculator.GroupNameMySQLd, "   ")
             fmt.Println("[MySQL Configuration]\n", mysqlConf.String())
-            
-            mysqlProbes, _ := mysqlFamily.ParseFamilyGroup(MO.GroupNameProbes, "   ")
+
+            mysqlProbes, _ := mysqlFamily.ParseFamilyGroup(calculator.GroupNameProbes, "   ")
             fmt.Println("[MySQL Probes]\n", mysqlProbes.String())
         }
-        
+
         // 4. Or grab everything at once formatted according to myRequest.Output ("human" or "json")
         var b bytes.Buffer
         if myRequest.Output == "json" {
@@ -286,7 +286,7 @@ func main() {
         } else {
             b, err = moc.GetHumanOutput(responseMessage, myRequest, families)
         }
-        
+
         if err == nil {
             fmt.Println("\n--- FULL OUTPUT ---")
             fmt.Println(b.String())
@@ -297,7 +297,7 @@ func main() {
 
 > **💡 Pro Tip on Memory Parsing:** If you already know the bytes, you can skip `ConvertMemoryToBytes` and assign it directly: `myRequest.Dimension.MemoryBytes = 2684354560`.
 
-*For a ready-to-run file, view `src/example/example.go` in the GitHub repository.*
+*For a ready-to-run file, view `cmd/example/main.go` in the GitHub repository.*
 
 ---
 
@@ -316,7 +316,7 @@ This section provides concrete examples for implementing the `mysqloperatorcalcu
 
 ### 1. Standalone Service
 
-After building and starting the binary with `./mysqloperatorcalculator -address=127.0.0.1 -port=8080`, you can interact with the service using standard HTTP clients like `curl`.
+After building and starting the binary with `./server -address=127.0.0.1 -port=8080`, you can interact with the service using standard HTTP clients like `curl`.
 
 #### 1.1 Discover Supported Parameters
 
@@ -397,12 +397,12 @@ import (
     "encoding/json"
     "fmt"
     "log"
-    MO "github.com/Tusamarco/mysqloperatorcalculator/src/mysqloperatorcalculator"
+    "github.com/Tusamarco/mysqloperatorcalculator/v2/calculator"
 )
 
 // Retrieve supported layouts
-var my MO.MysqlOperatorCalculator
-supportedConf := my.GetSupportedLayouts()
+var moc calculator.MySQLOperatorCalculator
+supportedConf := moc.GetSupportedLayouts()
 
 // Optional: Marshal to JSON for inspection
 output, _ := json.MarshalIndent(&supportedConf, "", " ")
@@ -415,21 +415,21 @@ fmt.Println(string(output))
 Below is a consolidated example showing how to construct a `ConfigurationRequest`, initialize the calculator, execute the calculation, and extract specific configuration groups (like `mysqld` settings or Kubernetes probes).
 
 ```go
-func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
-    var myRequest MO.ConfigurationRequest
-    var conf MO.Configuration
+func testGetconfiguration(moc calculator.MySQLOperatorCalculator) {
+    var myRequest calculator.ConfigurationRequest
+    var conf calculator.Configuration
     var err error
 
     // 1. Build the Request
-    myRequest.LoadType = MO.LoadType{Id: MO.LoadTypeSomeWrites}
-    myRequest.DBType = MO.DbTypeGroupReplication
-    myRequest.Output = MO.ResultOutputFormatHuman
+    myRequest.LoadType = calculator.LoadType{ID: calculator.LoadTypeSomeWrites}
+    myRequest.DBType = calculator.DBTypeGroupReplication
+    myRequest.Output = calculator.ResultOutputFormatHuman
     myRequest.Connections = 3000
-    myRequest.Mysqlversion = MO.Version{Major: 8, Minor: 4, Patch: 8}
+    myRequest.MySQLVersion = calculator.Version{Major: 8, Minor: 4, Patch: 8}
     myRequest.ProviderCostPct = 0.12
 
     // Setting an open dimension using literal values
-    myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
+    myRequest.Dimension = calculator.Dimension{ID: calculator.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
 
     // Convert string memory to bytes (Mandatory for open requests)
     myRequest.Dimension.MemoryBytes, err = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
@@ -447,17 +447,17 @@ func testGetconfiguration(moc MO.MysqlOperatorCalculator) {
        return
     }
 
-    if responseMessage.MType > 0 {
-       log.Printf("Message %d: %s - %s\n", responseMessage.MType, responseMessage.MName, responseMessage.MText)
+    if responseMessage.Type > 0 {
+       log.Printf("Message %d: %s - %s\n", responseMessage.Type, responseMessage.Name, responseMessage.Text)
     }
 
     // 3. Extract and Print Configurations by Group
     if len(families) > 0 {
        // Example: Parsing the MySQL Family
-       if mysqlFamily, err := moc.GetFamily(MO.FamilyTypeMysql); err == nil {
-          printFamilyGroup(mysqlFamily, MO.GroupNameMySQLd, " ", "MySQL Configuration")
-          printFamilyGroup(mysqlFamily, MO.GroupNameProbes, " ", "MySQL Probes")
-          printFamilyGroup(mysqlFamily, MO.GroupNameResources, " ", "MySQL Resources")
+       if mysqlFamily, err := moc.GetFamily(calculator.FamilyTypeMySQL); err == nil {
+          printFamilyGroup(mysqlFamily, calculator.GroupNameMySQLd, " ", "MySQL Configuration")
+          printFamilyGroup(mysqlFamily, calculator.GroupNameProbes, " ", "MySQL Probes")
+          printFamilyGroup(mysqlFamily, calculator.GroupNameResources, " ", "MySQL Resources")
        } else {
           log.Printf("Error retrieving MySQL family: %v\n", err)
        }
@@ -499,15 +499,15 @@ When utilizing the module, memory must ultimately be evaluated in bytes. You can
 
 ```go
 // Method 1: Direct assignment (Recommended if you know the exact byte count)
-myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, MemoryBytes: 2684354560}
+myRequest.Dimension = calculator.Dimension{ID: calculator.DimensionOpen, Cpu: 4000, MemoryBytes: 2684354560}
 
 // Method 2: Literal conversion
-myRequest.Dimension = MO.Dimension{Id: MO.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
+myRequest.Dimension = calculator.Dimension{ID: calculator.DimensionOpen, Cpu: 4000, Memory: "2.5G"}
 myRequest.Dimension.MemoryBytes, err = myRequest.Dimension.ConvertMemoryToBytes(myRequest.Dimension.Memory)
 
 ```
 
-> **Note:** For a fully runnable working example, refer to `src/example/example.go` in the official repository.
+> **Note:** For a fully runnable working example, refer to `cmd/example/main.go` in the official repository.
 
 ---
 
@@ -650,7 +650,7 @@ limit_memory = 268435456
 
 ## 🔧 Constants & Tuning Reference
 
-All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The table below documents every constant — what it controls, what it affects, and why it has its current value.
+All tuning knobs are defined in `calculator/constants.go`. The table below documents every constant — what it controls, what it affects, and why it has its current value.
 
 ### Response type codes
 
@@ -697,7 +697,7 @@ All tuning knobs are defined in `src/mysqloperatorcalculator/Constants.go`. The 
 |:---|:---:|:---|
 | `GroupRepGCSCacheMemStructureCost` | `52428800` (50 MiB) | Fixed overhead for the GR message-cache data structure, deducted from MySQL memory before buffer pool sizing. Separate from the per-connection cost. |
 | `GCSConnWeight` | `10` | Bytes per connection assumed for the GR message cache. Multiplied by `max_connections` to estimate total GCS memory demand. |
-| `GCSCacheMemoryImpactPctBuferPool` | `3.2` | Multiplier applied to the calculated GCS cache footprint before it is deducted from `memoryLeftover`. A plain subtraction of `group_replication_message_cache_size` understates the true buffer pool pressure because the Performance Schema reports lower utilization than the actual resident set. Multiplying by 3.2 reserves additional headroom so the InnoDB buffer pool remains stable even when GCS memory usage spikes above what the PS reports. |
+| `GCSCacheMemoryImpactPctBufferPool` | `3.2` | Multiplier applied to the calculated GCS cache footprint before it is deducted from `memoryLeftover`. A plain subtraction of `group_replication_message_cache_size` understates the true buffer pool pressure because the Performance Schema reports lower utilization than the actual resident set. Multiplying by 3.2 reserves additional headroom so the InnoDB buffer pool remains stable even when GCS memory usage spikes above what the PS reports. |
 
 ### Binlog cache sizing (async only)
 
@@ -716,9 +716,9 @@ These scale the configured GCache file size to its estimated in-memory (resident
 
 | Constant | Value | Load condition |
 |:---|:---:|:---|
-| `GcacheFootPrintFactorRead` | `0.5` | Mostly reads: GCache is largely idle. Also used for heavy-write loads (many small transactions certify quickly). |
-| `GcacheFootPrintFactorLightWrite` | `0.6` | Light OLTP: moderate certification backlog. |
-| `GcacheFootPrintFactorReadWrite` | `0.8` | Equal reads/writes: heavier certification backlog. |
+| `GCacheFootprintFactorRead` | `0.5` | Mostly reads: GCache is largely idle. Also used for heavy-write loads (many small transactions certify quickly). |
+| `GCacheFootprintFactorLightWrite` | `0.6` | Light OLTP: moderate certification backlog. |
+| `GCacheFootprintFactorReadWrite` | `0.8` | Equal reads/writes: heavier certification backlog. |
 
 ### CPU-to-connection scaling factors
 
@@ -726,16 +726,16 @@ These determine how many CPU millicores each active connection is assumed to con
 
 | Constant | Value | Load condition |
 |:---|:---:|:---|
-| `CpuConncetionMillFactorRead` | `0.8` | Mostly reads: low write overhead. |
-| `CpuConncetionMillFactorReadWriteLight` | `1.2` | Light OLTP: binlog + replication add up. |
-| `CpuConncetionMillFactorReadWriteEqual` | `1.6` | Equal reads/writes: lock contention overhead. |
-| `CpuConncetionMillFactorReadWriteHeavy` | `2.0` | Heavy writes: maximum CPU demand per connection. |
+| `CPUConnectionMillFactorRead` | `0.8` | Mostly reads: low write overhead. |
+| `CPUConnectionMillFactorReadWriteLight` | `1.2` | Light OLTP: binlog + replication add up. |
+| `CPUConnectionMillFactorReadWriteEqual` | `1.6` | Equal reads/writes: lock contention overhead. |
+| `CPUConnectionMillFactorReadWriteHeavy` | `2.0` | Heavy writes: maximum CPU demand per connection. |
 
 ### Connection and auto-scale thresholds
 
 | Constant | Value | Description |
 |:---|:---:|:---|
-| `ConnectionWeighPctLimit` | `0.50` | When connection-buffer memory cost exceeds 50% of MySQL memory, InnoDB/redo-log sizing is skipped and the response is flagged `ClosetolimitI`. |
+| `ConnectionWeightPctLimit` | `0.50` | When connection-buffer memory cost exceeds 50% of MySQL memory, InnoDB/redo-log sizing is skipped and the response is flagged `ClosetolimitI`. |
 | `MinConnectionNumber` | `20` | Hard floor: any request with fewer connections (or `0`) is raised to this value before calculation. |
 | `MaxAutoConnections` | `500000` | Upper bound for the auto-connection search loop (`connections = 0`), preventing an unbounded loop on large instances. |
 | `CPUIncrement` | `200` | CPU millicores added per step when auto-sizing (`dimension.id = 998`). |
@@ -747,7 +747,7 @@ These determine how many CPU millicores each active connection is assumed to con
 
 1. **Versioning:** The tool currently supports MySQL **8.0.46 through 11.1.1**. Certain parameters are removed, adjusted, or deprecated outside this range (e.g. `innodb_log_file_size` was replaced by `innodb_redo_log_capacity` at 8.0.31; `innodb_io_capacity_max` was removed at 8.8.0).
 2. **Testing:** Always **test** the generated configurations in a non‑production Kubernetes environment before rolling them out to a critical production cluster.
-3. **Customization:** The source code relies on several sensible internal constants (e.g., `CPUIncrement`, `MemoryIncrement`, `GcacheFootPrintFactorRead`). If your specific environment diverges heavily from standard cloud workloads, these can be adjusted in the Go code.
+3. **Customization:** The source code relies on several sensible internal constants (e.g., `CPUIncrement`, `MemoryIncrement`, `GCacheFootprintFactorRead`). If your specific environment diverges heavily from standard cloud workloads, these can be adjusted in the Go code.
 
 
 
@@ -786,14 +786,14 @@ Total connection memory pressure is then estimated:
 
 ```
 effective_connections = connections × loadFactor
-connBuffersMemTot     = (sum_of_buffers × effective_connections)
+connBuffersMemTotal   = (sum_of_buffers × effective_connections)
                       + (tmp_table_footprint × effective_connections)
-memoryLeftover        = memoryMySQL − connBuffersMemTot
+memoryLeftover        = memoryMySQL − connBuffersMemTotal
 ```
 
 `loadFactor = connections / loadAdjustmentMax`, where `loadAdjustmentMax = mysqlCPU / CpuConnectionMillFactor`. It scales pressure down when the CPU-to-connection ratio is favorable.
 
-> **Gate check**: if `connBuffersMemTot / memoryMySQL ≥ 0.50` (`ConnectionWeighPctLimit`), all InnoDB, redo-log, GCache, and GCS sizing is skipped. The buffer pool remains at 0, which causes `EvaluateResources` to return `OverutilizingI`.
+> **Gate check**: if `connBuffersMemTotal / memoryMySQL ≥ 0.50` (`ConnectionWeightPctLimit`), all InnoDB, redo-log, GCache, and GCS sizing is skipped. The buffer pool remains at 0, which causes `EvaluateResources` to return `OverutilizingI`.
 
 ### Phase 2 — Redo Log Sizing
 
@@ -926,7 +926,7 @@ The final step removes any parameter whose defined `[Min, Max]` version range do
 After the pipeline completes, `EvaluateResources` assesses the result:
 
 ```
-bpPct = innoDBbpSize / totalDimensionMemory
+bpPct = innoDBBPSize / totalDimensionMemory
 
 if bpPct < MinLimit:          → OverutilizingI  (no families returned)
 if bpPct < MinLimit + 0.10:   → ClosetolimitI
